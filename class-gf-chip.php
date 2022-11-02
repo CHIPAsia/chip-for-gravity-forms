@@ -312,22 +312,22 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	public function other_settings_fields() {
-		$other_settings_fields = parent::other_settings_fields();
-		$other_settings_fields[0]['name'] = 'clientInformation';
-		$other_settings_fields[0]['label'] = esc_html__( 'Client Information.', 'gravityformschip' );
+		$other_settings_fields                 = parent::other_settings_fields();
+		$other_settings_fields[0]['name']      = 'clientInformation';
+		$other_settings_fields[0]['label']     = esc_html__( 'Client Information.', 'gravityformschip' );
 		$other_settings_fields[0]['field_map'] = $this->client_info_fields();
-		$other_settings_fields[0]['tooltip'] = '<h6>' . esc_html__( 'Client Information', 'gravityformschip' ) . '</h6>' . esc_html__( 'Map your Form Fields to the available listed fields. Only email are required to be set and other fields are optional. You may refer to CHIP API for further information about the specific fields.', 'gravityformschip' );
+		$other_settings_fields[0]['tooltip']   = '<h6>' . esc_html__( 'Client Information', 'gravityformschip' ) . '</h6>' . esc_html__( 'Map your Form Fields to the available listed fields. Only email are required to be set and other fields are optional. You may refer to CHIP API for further information about the specific fields.', 'gravityformschip' );
 
 		$conditional_logic = $other_settings_fields[1];
 		unset($other_settings_fields[1]);
 
     // This dynamic_field_map inspired by gravityformsstripe plugin
     $other_settings_fields[] = array(
-      'name'                => 'clientMetaData',
-      'label'               => esc_html__( 'Client Information Metadata', 'gravityformschip' ),
-      'type'                => 'dynamic_field_map',
-      'limit'               => 15,
-      'tooltip'             => '<h6>' . esc_html__( 'Client Information Metadata', 'gravityformsstripe' ) . '</h6>' . esc_html__( 'You may send custom key information to CHIP /purchases/ client fields. A maximum of 15 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated accordingly as per requirements by CHIP. Accepted keys is \'bank_account\', \'bank_code\', \'personal_code\', \'street_address\', \'country\', \'city\', \'zip_code\', \'shipping_street_address\', \'shipping_country\', \'shipping_city\', \'shipping_zip_code\', \'legal_name\', \'brand_name\', \'registration_number\', \'tax_number\'', 'gravityformschip' ),
+      'name'    => 'clientMetaData',
+      'label'   => esc_html__( 'Client Information Metadata', 'gravityformschip' ),
+      'type'    => 'dynamic_field_map',
+      'limit'   => 15,
+      'tooltip' => '<h6>' . esc_html__( 'Client Information Metadata', 'gravityformsstripe' ) . '</h6>' . esc_html__( 'You may send custom key information to CHIP /purchases/ client fields. A maximum of 15 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated accordingly as per requirements by CHIP. Accepted keys is \'bank_account\', \'bank_code\', \'personal_code\', \'street_address\', \'country\', \'city\', \'zip_code\', \'shipping_street_address\', \'shipping_country\', \'shipping_city\', \'shipping_zip_code\', \'legal_name\', \'brand_name\', \'registration_number\', \'tax_number\'', 'gravityformschip' ),
     );
 
 		$other_settings_fields[] = array(
@@ -544,13 +544,13 @@ class GF_Chip extends GFPaymentAddOn {
     $configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global');
 
     if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
-			$secret_key  = rgar($gf_global_settings, 'secret_key');
-		  $brand_id     = rgar($gf_global_settings, 'brand_id');
+			$secret_key = rgar($gf_global_settings, 'secret_key');
+		  $brand_id   = rgar($gf_global_settings, 'brand_id');
 		}
 		
 		if ($configuration_type == 'form'){
-			$secret_key  = rgars($feed, 'meta/secret_key');
-			$brand_id     = rgars($feed, 'meta/brand_id');
+			$secret_key = rgars($feed, 'meta/secret_key');
+			$brand_id   = rgars($feed, 'meta/brand_id');
 		}
 
     $chip = GFChipAPI::get_instance($secret_key, $brand_id);
@@ -629,8 +629,8 @@ class GF_Chip extends GFPaymentAddOn {
   public function get_confirmation_url( $entry_id, $form_id ) {
     $redirect_url_args = array(
       'gf_chip_success' => 'true',
-      'entry_id' => $entry_id,
-      'form_id' => $form_id
+      'entry_id'        => $entry_id,
+      'form_id'         => $form_id
     );
 
     $redirect_url_args['hash'] = wp_hash( implode($redirect_url_args) );
