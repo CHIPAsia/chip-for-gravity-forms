@@ -22,13 +22,13 @@ add_action( 'gform_loaded', array( 'GF_CHIP_Bootstrap', 'load_addon' ), 5 );
 
 class GF_CHIP_Bootstrap {
 
-	public static function load_addon() {
+  public static function load_addon() {
 
     require_once GF_CHIP_PLUGIN_PATH . '/api.php';
-		require_once GF_CHIP_PLUGIN_PATH . '/class-gf-chip.php';
+    require_once GF_CHIP_PLUGIN_PATH . '/class-gf-chip.php';
 
-		GFAddOn::register( 'GF_Chip' );
-		
-	}
+    GFAddOn::register( 'GF_Chip' );
+    
+  }
 
 }

@@ -12,13 +12,13 @@ class GFChipAPI
     private static $_instance;
     public static function get_instance($secret_key, $brand_id) {
 
-		if ( self::$_instance == null ) {
-			self::$_instance = new GFChipAPI($secret_key, $brand_id);
-		}
+    if ( self::$_instance == null ) {
+      self::$_instance = new GFChipAPI($secret_key, $brand_id);
+    }
 
-		return self::$_instance;
+    return self::$_instance;
 
-	}
+  }
 
     public function __construct($secret_key, $brand_id)
     {
