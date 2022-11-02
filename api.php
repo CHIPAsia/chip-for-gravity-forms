@@ -10,19 +10,19 @@ define("GF_CHIP_ROOT_URL", "https://gate.chip-in.asia");
 class GFChipAPI
 {
     private static $_instance;
-    public static function get_instance($private_key, $brand_id) {
+    public static function get_instance($secret_key, $brand_id) {
 
 		if ( self::$_instance == null ) {
-			self::$_instance = new GFChipAPI($private_key, $brand_id);
+			self::$_instance = new GFChipAPI($secret_key, $brand_id);
 		}
 
 		return self::$_instance;
 
 	}
 
-    public function __construct($private_key, $brand_id)
+    public function __construct($secret_key, $brand_id)
     {
-        $this->private_key = $private_key;
+        $this->secret_key = $secret_key;
         $this->brand_id = $brand_id;
     }
 
@@ -65,7 +65,7 @@ class GFChipAPI
 
     private function call($method, $route, $params = [])
     {
-        $private_key = $this->private_key;
+        $secret_key = $this->secret_key;
         if (!empty($params)) {
             $params = json_encode($params);
         }
@@ -76,7 +76,7 @@ class GFChipAPI
             $params,
             [
                 'Content-type' => 'application/json',
-                'Authorization' => 'Bearer ' . $private_key,
+                'Authorization' => 'Bearer ' . $secret_key,
             ]
         );
         $result = json_decode($response, true);

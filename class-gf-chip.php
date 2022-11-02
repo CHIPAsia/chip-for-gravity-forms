@@ -102,11 +102,11 @@ class GF_Chip extends GFPaymentAddOn {
 				'tooltip' => '<h6>' . esc_html__('Brand ID', 'gravityformschip') . '</h6>' . esc_html__('Brand ID enables you to represent your Brand suitable for the system using the same CHIP account.', 'gravityformschip')
 		  ),
 			array(
-				'name' => 'private_key',
-				'label' => esc_html__('Private Key', 'gravityformschip'),
+				'name' => 'secret_key',
+				'label' => esc_html__('Secret Key', 'gravityformschip'),
 				'type' => 'text',
 				'required' => true,
-				'tooltip' => '<h6>' . esc_html__('Private Key', 'gravityformschip') . '</h6>' . esc_html__('Private key is used to identify your account with CHIP. You are recommended to create dedicated private key for each website.', 'gravityformschip')
+				'tooltip' => '<h6>' . esc_html__('Secret Key', 'gravityformschip') . '</h6>' . esc_html__('Secret key is used to identify your account with CHIP. You are recommended to create dedicated secret key for each website.', 'gravityformschip')
 		  ),
 
 		);
@@ -150,7 +150,7 @@ class GF_Chip extends GFPaymentAddOn {
 			printf(
 				// translators: $1$s opens a link tag, %2$s closes link tag.
 				esc_html__(
-					'Your %1$sCHIP%2$s Brand ID and Private Key settings: %3$s%5$s%4$s.',
+					'Your %1$sCHIP%2$s Brand ID and Secret Key settings: %3$s%5$s%4$s.',
           'gravityformschip'
 				),
 				'<a href="https://gate.chip-in.asia/" target="_blank">',
@@ -171,22 +171,32 @@ class GF_Chip extends GFPaymentAddOn {
 			return false;
 		}
 
-		$chip = GFChipAPI::get_instance($new_value['private_key'], $new_value['brand_id']);
+    $this->log_debug( __METHOD__ . "(): Updating global keys. Old value " . print_r( $old_value, true ) );
+
+		$chip = GFChipAPI::get_instance($new_value['secret_key'], $new_value['brand_id']);
 		$public_key = $chip->get_public_key();
 
 		if (is_string($public_key)){
 			update_option( 'gf_chip_global_key_validation', true );
 			update_option( 'gf_chip_global_error_code', '' );
+
+      $debug_log = __METHOD__ . "(): Global keys updated and successfully validated. New value " . print_r( $new_value, true );
 		} else if (is_array($public_key['__all__'])){
 			$error_code_a = array_column($public_key['__all__'], 'code');
 			$error_code = implode(', ',$error_code_a);
 
 			update_option( 'gf_chip_global_key_validation', false);
 			update_option( 'gf_chip_global_error_code', $error_code );
+
+      $debug_log = __METHOD__ . "(): Updating global keys failed " . print_r( $old_value, true ) . print_r($error_code, true);
 		} else {
 			update_option( 'gf_chip_global_key_validation', false);
 			update_option( 'gf_chip_global_error_code', 'unspecified error!' );
+
+      $debug_log =  __METHOD__ . "(): Updating global keys failed with unspecified error";
 		}
+
+    $this->log_debug( $debug_log );
 	}
 
 	public function feed_settings_fields() {
@@ -239,7 +249,7 @@ class GF_Chip extends GFPaymentAddOn {
 				'field'  => 'chipConfigurationType',
 				'values' => array( 'form' )
 			),
-			'description' => esc_html__('Set your Brand ID and Private Key for the use of CHIP with this forms', 'gravityformschip'),
+			'description' => esc_html__('Set your Brand ID and Secret Key for the use of CHIP with this forms', 'gravityformschip'),
 			'fields'     => array(
 			  array(
 					'name'     => 'brand_id',
@@ -250,12 +260,12 @@ class GF_Chip extends GFPaymentAddOn {
 					'tooltip' => '<h6>' . esc_html__('Brand ID', 'gravityformschip') . '</h6>' . esc_html__('Brand ID enables you to represent your Brand suitable for the system using the same CHIP account.', 'gravityformschip')
 				),
 				array(
-					'name'     => 'private_key',
-					'label'    => esc_html__( 'Private Key', 'gravityformschip' ),
+					'name'     => 'secret_key',
+					'label'    => esc_html__( 'Secret Key', 'gravityformschip' ),
 					'type'     => 'text',
 					'class'  => 'medium',
 					'required' => true,
-					'tooltip' => '<h6>' . esc_html__('Private Key', 'gravityformschip') . '</h6>' . esc_html__('Private key is used to identify your account with CHIP. You are recommended to create dedicated private key for each website.', 'gravityformschip')
+					'tooltip' => '<h6>' . esc_html__('Secret Key', 'gravityformschip') . '</h6>' . esc_html__('Secret key is used to identify your account with CHIP. You are recommended to create dedicated secret key for each website.', 'gravityformschip')
 				),
 			)
 		);
@@ -311,6 +321,15 @@ class GF_Chip extends GFPaymentAddOn {
 		$conditional_logic = $other_settings_fields[1];
 		unset($other_settings_fields[1]);
 
+    // This dynamic_field_map inspired by gravityformsstripe plugin
+    $other_settings_fields[] = array(
+      'name'                => 'clientMetaData',
+      'label'               => esc_html__( 'Client Information Metadata', 'gravityformschip' ),
+      'type'                => 'dynamic_field_map',
+      'limit'               => 15,
+      'tooltip'             => '<h6>' . esc_html__( 'Client Information Metadata', 'gravityformsstripe' ) . '</h6>' . esc_html__( 'You may send custom key information to CHIP /purchases/ client fields. A maximum of 15 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated accordingly as per requirements by CHIP. Accepted keys is \'bank_account\', \'bank_code\', \'personal_code\', \'street_address\', \'country\', \'city\', \'zip_code\', \'shipping_street_address\', \'shipping_country\', \'shipping_city\', \'shipping_zip_code\', \'legal_name\', \'brand_name\', \'registration_number\', \'tax_number\'', 'gravityformschip' ),
+    );
+
 		$other_settings_fields[] = array(
 			'name'      => 'purchaseInformation',
 			'label'     => esc_html__( 'Purhase Information', 'gravityformschip' ),
@@ -324,6 +343,7 @@ class GF_Chip extends GFPaymentAddOn {
 		return $other_settings_fields;
 	}
 
+  // This method must return empty array to prevent option from showing in feeds settings
 	public function option_choices() {
 		return array();
 	}
@@ -331,23 +351,8 @@ class GF_Chip extends GFPaymentAddOn {
 	public function client_info_fields() {
 
 		$client_info_fields = array(
-      array( 'name' => 'email',                   'label' => esc_html__( 'Email', 'gravityformschip' ),                   'required' => true ),
-      array( 'name' => 'full_name',               'label' => esc_html__( 'Full Name', 'gravityformschip' )  ,             'required' => false ),
-      array( 'name' => 'bank_account',            'label' => esc_html__( 'Bank Account Number', 'gravityformschip' ),     'required' => false ),
-      array( 'name' => 'bank_code',               'label' => esc_html__( 'Bank Code', 'gravityformschip' ),               'required' => false ),
-      array( 'name' => 'personal_code',           'label' => esc_html__( 'Personal Code', 'gravityformschip' ),           'required' => false ),
-      array( 'name' => 'street_address',          'label' => esc_html__( 'Street Address', 'gravityformschip' ),          'required' => false ),
-      array( 'name' => 'country',                 'label' => esc_html__( 'Country', 'gravityformschip' ),                 'required' => false ),
-      array( 'name' => 'city',                    'label' => esc_html__( 'City', 'gravityformschip' ),                    'required' => false ),
-      array( 'name' => 'zip_code',                'label' => esc_html__( 'Zip Code', 'gravityformschip' ),                'required' => false ),
-      array( 'name' => 'shipping_street_address', 'label' => esc_html__( 'Shipping Street Address', 'gravityformschip' ), 'required' => false ),
-      array( 'name' => 'shipping_country',        'label' => esc_html__( 'Shipping Country', 'gravityformschip' ),        'required' => false ),
-      array( 'name' => 'shipping_city',           'label' => esc_html__( 'Shipping City', 'gravityformschip' ),           'required' => false ),
-      array( 'name' => 'shipping_zip_code',       'label' => esc_html__( 'Shipping Zip Code', 'gravityformschip' ),       'required' => false ),
-      array( 'name' => 'legal_name',              'label' => esc_html__( 'Legal Name', 'gravityformschip' ),              'required' => false ),
-      array( 'name' => 'brand_name',              'label' => esc_html__( 'Brand Name', 'gravityformschip' ),              'required' => false ),
-      array( 'name' => 'registration_number',     'label' => esc_html__( 'Registration Number', 'gravityformschip' ),     'required' => false ),
-      array( 'name' => 'tax_number',              'label' => esc_html__( 'Tax Number', 'gravityformschip' ),              'required' => false ),
+      array( 'name' => 'email',     'label' => esc_html__( 'Email', 'gravityformschip' ),                   'required' => true ),
+      array( 'name' => 'full_name', 'label' => esc_html__( 'Full Name', 'gravityformschip' )  ,             'required' => false ),
 		);
 
 		return apply_filters('gf_chip_client_info_fields', $client_info_fields);
@@ -355,7 +360,7 @@ class GF_Chip extends GFPaymentAddOn {
 
 	public function purchase_info_fields() {
     $purchase_info_fields = array(
-			array( 'name' => 'notes',               'label' => esc_html__( 'Purchase Note', 'gravityformschip' )  ,             'required' => false ),
+			array( 'name' => 'notes', 'label' => esc_html__( 'Purchase Note', 'gravityformschip' )  ,             'required' => false ),
 		);
 
 		return apply_filters( 'gf_chip_purchase_info_fields', $purchase_info_fields );
@@ -368,13 +373,15 @@ class GF_Chip extends GFPaymentAddOn {
 		// error_log('this is entry: ' . print_r($entry, true));
 
 		$entry_id  = $entry['id'];
-		
+
+    $this->log_debug( __METHOD__ . "(): Started for entry id: #" . $entry_id);
+
     $configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global');
-		
+
 		$payment_amount_location  = rgars( $feed, 'meta/paymentAmount'); // location for payment amount
 		$full_name_location       = rgars( $feed, 'meta/clientInformation_full_name'); // location for buyer full name
 		$email_location           = rgars( $feed, 'meta/clientInformation_email'); // location for buyer email address
-		$notes_location           = rgars( $feed, 'meta/purchaseInformation_notes'); // location for purchase notes
+    $notes_location           = rgars( $feed, 'meta/purchaseInformation_notes'); // location for purchase notes
 
     // This if the total amount choose to form total
 		if ($payment_amount_location == 'form_total'){
@@ -399,8 +406,10 @@ class GF_Chip extends GFPaymentAddOn {
 		$email     = rgar( $entry, $email_location);
 		$notes     = rgar( $entry, $notes_location);
 
+    $client_meta_data = $this->get_chip_client_meta_data( $feed, $entry, $form );
+
 		if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
-			$private_key  = rgar($gf_global_settings, 'private_key');
+			$secret_key  = rgar($gf_global_settings, 'secret_key');
 		  $brand_id     = rgar($gf_global_settings, 'brand_id');
 			$due_strict   = rgar($gf_global_settings, 'due_strict');
 			$due_timing   = rgar($gf_global_settings, 'due_strict_timing', 60);
@@ -408,14 +417,14 @@ class GF_Chip extends GFPaymentAddOn {
 		}
 		
 		if ($configuration_type == 'form'){
-			$private_key  = rgars($feed, 'meta/private_key');
+			$secret_key  = rgars($feed, 'meta/secret_key');
 			$brand_id     = rgars($feed, 'meta/brand_id');
 			$due_strict   = rgars($feed, 'meta/due_strict');
 			$due_timing   = rgars($feed, 'meta/due_strict_timing', 60);
       $send_receipt = rgars($feed, 'meta/send_receipt', false);
 		}
 
-		$chip = GFChipAPI::get_instance($private_key, $brand_id);
+		$chip = GFChipAPI::get_instance($secret_key, $brand_id);
 
     $redirect_url_args = array(
       'callback' => $this->_slug,
@@ -448,14 +457,22 @@ class GF_Chip extends GFPaymentAddOn {
 			),
 		);
 
+    // merge client array with client meta data array
+    $params['client']+= $client_meta_data;
+
+    $this->log_debug( __METHOD__ . "(): Params keys " . print_r( $params, true ) );
+
 		$payment = $chip->create_payment($params);
 
     if (!rgar($payment, 'id')) {
+      $this->log_debug( __METHOD__ . "(): Attempt to create purchases failed " . print_r( $payment, true ) );
       return false;
     }
 
     // Store chip payment id
     gform_update_meta( $entry_id, 'chip_payment_id', rgar($payment, 'id'),  rgar( $form, 'id' ));
+
+    $this->log_debug( __METHOD__ . "(): Attempt to create purchases successful " . print_r( $payment, true ) );
 
 		return $payment['checkout_url'];
 	}
@@ -467,37 +484,83 @@ class GF_Chip extends GFPaymentAddOn {
     );
   }
 
+  // This method inspired by gravityformsstripe plugin
+	public function get_chip_client_meta_data( $feed, $entry, $form ) {
+
+		// Initialize metadata array.
+		$metadata = array();
+
+		// Find feed metadata.
+		$custom_meta = rgars( $feed, 'meta/clientMetaData' );
+
+		if ( is_array( $custom_meta ) ) {
+
+			// Loop through custom meta and add to metadata for stripe.
+			foreach ( $custom_meta as $meta ) {
+
+				// If custom key or value are empty, skip meta.
+				if ( empty( $meta['custom_key'] ) || empty( $meta['value'] ) ) {
+					continue;
+				}
+
+				// Get field value for meta key.
+				$field_value = $this->get_field_value( $form, $entry, $meta['value'] );
+
+				if ( ! empty( $field_value ) ) {
+
+					// Add to metadata array.
+					$metadata[ $meta['custom_key'] ] = $field_value;
+				}
+			}
+
+			if ( ! empty( $metadata ) ) {
+				$this->log_debug( __METHOD__ . '(): ' . json_encode( $metadata ) );
+			}
+
+		}
+
+		return $metadata;
+
+	}
+
   public function callback() {
     $entry_id = intval(rgget( 'entry_id' ));
+    $this->log_debug( 'Started ' . __METHOD__ . "(): for entry id #" . $entry_id);
 
     $processed_feeds = gform_get_meta($entry_id, 'processed_feeds');
 
     // Taking only the first array because chip feed should only one per entry.
     if (count($processed_feeds['gravityformschip']) != 1){
-      exit('Unexpected feed count for entry: #' . $entry_id);
+      $msg = 'Unexpected feed count for entry: #' . $entry_id;
+      $this->log_debug( __METHOD__ . "(): " . $msg );
+      wp_die($msg);
     }
 
     $feed_id   = $processed_feeds['gravityformschip'][0];
     $feed      = GFAPI::get_feed( $feed_id );
 
+    $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id is set to Feed ID #" . $feed_id );
+
     $configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global');
 
     if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
-			$private_key  = rgar($gf_global_settings, 'private_key');
+			$secret_key  = rgar($gf_global_settings, 'secret_key');
 		  $brand_id     = rgar($gf_global_settings, 'brand_id');
 		}
 		
 		if ($configuration_type == 'form'){
-			$private_key  = rgars($feed, 'meta/private_key');
+			$secret_key  = rgars($feed, 'meta/secret_key');
 			$brand_id     = rgars($feed, 'meta/brand_id');
 		}
 
-    $chip = GFChipAPI::get_instance($private_key, $brand_id);
+    $chip = GFChipAPI::get_instance($secret_key, $brand_id);
 
     // Get CHIP Payment ID
     $payment_id = gform_get_meta($entry_id, 'chip_payment_id');
 
     $chip_payment     = $chip->get_payment($payment_id);
+    $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id get purchases information" . print_r($chip_payment, true) );
+
     $transaction_data = rgar($chip_payment, 'transaction_data');
     $payment_method   = rgar($transaction_data, 'payment_method');
 
@@ -514,19 +577,23 @@ class GF_Chip extends GFPaymentAddOn {
       'payment_method'   => $payment_method,
     );
 
-    if ($this->is_duplicate_callback( $payment_id )) {
-      $action['abort_callback'] = 'true';
-    }
-
     // Acquire lock to prevent concurrency
     $GLOBALS['wpdb']->get_results(
       "SELECT GET_LOCK('chip_gf_payment', 15);"
     );
 
+    if ($this->is_duplicate_callback( $payment_id )) {
+      $action['abort_callback'] = 'true';
+    }
+
+    $this->log_debug( 'End of ' . __METHOD__ . "(): params return value: " . print_r($action, true) );
+
     return $action;
   }
 
   public function post_callback( $callback_action, $result ) {
+    $this->log_debug( 'Start of ' . __METHOD__ . "(): for entry id: #" . $callback_action['entry_id'] );
+
     // Release lock to enable concurrency
     $GLOBALS['wpdb']->get_results(
       "SELECT RELEASE_LOCK('chip_gf_payment');"
@@ -555,6 +622,7 @@ class GF_Chip extends GFPaymentAddOn {
 
     // Redirect user automatically
     echo '<script>window.location.replace(\''. esc_url_raw($url) . '\')</script>';
+    $this->log_debug( 'End of ' . __METHOD__ . "(): for entry id: #" . $callback_action['entry_id'] );
 	}
 
   // This method inspired by gravityformsstripe plugin
@@ -570,6 +638,7 @@ class GF_Chip extends GFPaymentAddOn {
     return $this->get_redirect_url($redirect_url_args);
   }
 
+  // This method inspired by gravityformsstripe plugin
   public function maybe_thankyou_page() {
     if (!rgget('gf_chip_success') OR !rgget('entry_id') OR !rgget('form_id')) {
       return;
@@ -577,8 +646,10 @@ class GF_Chip extends GFPaymentAddOn {
 
     $entry_id = sanitize_key(rgget('entry_id'));
     $form_id  = sanitize_key(rgget('form_id'));
+    $this->log_debug( __METHOD__ . "(): confirmation page for entry id: #" . $entry_id );
 
     if (wp_hash( 'true' . $entry_id . $form_id ) != rgget('hash')){
+      $this->log_debug( __METHOD__ . "(): wp_hash failure for entry id: #" . $entry_id );
       return;
     }
 
@@ -592,6 +663,7 @@ class GF_Chip extends GFPaymentAddOn {
     $confirmation = GFFormDisplay::handle_confirmation( $form, $entry, false );
 
     if ( is_array( $confirmation ) && isset( $confirmation['redirect'] ) ) {
+      $this->log_debug( __METHOD__ . "(): confirmation is redirect type for entry id: #" . $entry_id );
       header( "Location: {$confirmation['redirect']}" );
       exit;
     }
@@ -602,7 +674,14 @@ class GF_Chip extends GFPaymentAddOn {
       'form'                 => $form,
       'lead'                 => $entry,
     );
+
+    $this->log_debug( __METHOD__ . "(): confirmation is non redirect type for entry id: #" . $entry_id );
   }
+
+  // this method content can be inspired from gravityformsauthorizenet
+  // this method used for subscription for gravityformsauthorizenet
+  // public function check_status() {
+  // }
 
   public function uninstall() {
     $option_names = array(
