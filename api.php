@@ -4,7 +4,7 @@
  * License: GNU General Public License v3.0
  * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  */
-
+// This is CHIP API URL Endpoint as per documented in: https://developer.chip-in.asia/api
 define("GF_CHIP_ROOT_URL", "https://gate.chip-in.asia");
 
 class GFChipAPI
@@ -28,7 +28,8 @@ class GFChipAPI
 
     public function create_payment($params)
     {
-        return $this->call('POST', '/purchases/', $params);
+        // time() is to force fresh instead cache
+        return $this->call('POST', '/purchases/?time=' . time(), $params);
     }
 
     public function payment_methods($currency, $language)
@@ -41,7 +42,8 @@ class GFChipAPI
 
     public function get_payment($payment_id)
     {
-      $result = $this->call('GET', "/purchases/{$payment_id}/");
+      // time() is to force fresh instead cache
+      $result = $this->call('GET', "/purchases/{$payment_id}/?time=" . time());
       return $result;
     }
 
