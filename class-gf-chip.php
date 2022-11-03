@@ -38,6 +38,9 @@ class GF_Chip extends GFPaymentAddOn {
   public function pre_init() {
     // inspired by gravityformsstripe
     add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
+    add_action('gform_post_payment_action', array($this, 'create_post_now'), 10, 2);
+
+    add_filter('gform_disable_post_creation', array( $this, 'disable_post_creation' ), 10, 3);
 
     parent::pre_init();
   }
@@ -346,6 +349,17 @@ class GF_Chip extends GFPaymentAddOn {
       'tooltip'   => '<h6>' . esc_html__( 'Cancel URL', 'gravityformschip' ) . '</h6>' . esc_html__( 'Redirect to custom URL in the event of cancellation. Leaving blank will redirect back to form page in the event of cancellation. Note: You can set success behavior by setting confirmation redirect.', 'gravityformschip' )
     );
 
+    $form = $this->get_current_form();
+
+    if (GFCommon::has_post_field($form['fields'])) {
+      $other_settings_fields[] = array(
+          'name'    => 'delay_post_creation',
+          'label'   => esc_html__('Delay Post Creation', 'gravityformschip'),
+          'type'    => 'toggle',
+          'tooltip' => '<h6>' . esc_html__('Delay Post Creation', 'gravityformsbillplz') . '</h6>' . esc_html__('Enable this option if you would like to only create the post after payment has been received.', 'gravityformschip'),
+      );
+    }
+
     $other_settings_fields[] = $conditional_logic;
 
     return $other_settings_fields;
@@ -536,8 +550,6 @@ class GF_Chip extends GFPaymentAddOn {
     $entry_id = intval(rgget( 'entry_id' ));
     $this->log_debug( 'Started ' . __METHOD__ . "(): for entry id #" . $entry_id);
 
-    $processed_feeds = gform_get_meta($entry_id, 'processed_feeds');
-
     // Taking only the first array because chip feed should only one per entry.
     if (count($processed_feeds['gravityformschip']) != 1){
       $msg = 'Unexpected feed count for entry: #' . $entry_id;
@@ -545,21 +557,26 @@ class GF_Chip extends GFPaymentAddOn {
       wp_die($msg);
     }
 
-    $feed_id   = $processed_feeds['gravityformschip'][0];
-    $feed      = GFAPI::get_feed( $feed_id );
+    // This is long way to get a feed_id from entry_id
+    // Using the method provided by parent is the choice here
+    // $processed_feeds = gform_get_meta($entry_id, 'processed_feeds');
+    // $feed_id   = $processed_feeds['gravityformschip'][0];
+    // $submission_feed = GFAPI::get_feed( $feed_id );
 
-    $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id is set to Feed ID #" . $feed_id );
+    $submission_feed = $this->get_payment_feed($entry);
 
-    $configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global');
+    $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id is set to Feed ID #" . $submission_feed['id'] );
+
+    $configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global');
 
     if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
       $secret_key = rgar($gf_global_settings, 'secret_key');
       $brand_id   = rgar($gf_global_settings, 'brand_id');
     }
-    
+
     if ($configuration_type == 'form'){
-      $secret_key = rgars($feed, 'meta/secret_key');
-      $brand_id   = rgars($feed, 'meta/brand_id');
+      $secret_key = rgars($submission_feed, 'meta/secret_key');
+      $brand_id   = rgars($submission_feed, 'meta/brand_id');
     }
 
     $chip = GFChipAPI::get_instance($secret_key, $brand_id);
@@ -620,10 +637,8 @@ class GF_Chip extends GFPaymentAddOn {
       $message = esc_html__('. Payment successful. ', 'gravityformschip');
       $url     = $this->get_confirmation_url( $entry_id, $form_id );
     } else {
-      $processed_feeds = gform_get_meta($entry_id, 'processed_feeds');
-      $feed_id         = $processed_feeds['gravityformschip'][0];
-      $feed            = GFAPI::get_feed( $feed_id );
-      $cancel_url      = rgars($feed, 'meta/cancelUrl');
+      $submission_feed = $this->get_payment_feed($entry);
+      $cancel_url      = rgars($submission_feed, 'meta/cancelUrl');
 
       if ($cancel_url AND filter_var($cancel_url, FILTER_VALIDATE_URL)) {
         $url = $cancel_url;
@@ -700,6 +715,62 @@ class GF_Chip extends GFPaymentAddOn {
   // this method used for subscription for gravityformsauthorizenet
   // public function check_status() {
   // }
+
+  // this method inspired by gravityformspaypal
+  public function supported_notification_events( $form ) {
+    return array(
+			'complete_payment'          => esc_html__( 'Payment Completed', 'gravityformschip' ),
+			// 'refund_payment'            => esc_html__( 'Payment Refunded', 'gravityformschip' ),
+			'fail_payment'              => esc_html__( 'Payment Failed', 'gravityformschip' ),
+		);
+	}
+
+  // default $is_disabled = false
+  public function disable_post_creation($is_disabled, $form, $entry) {
+    $submission_feed = $this->get_payment_feed($entry, $form);
+    $submission_data = $this->get_submission_data($submission_feed, $form, $entry);
+
+    if (rgar($submission_feed, 'addon_slug') != 'gravityformschip') {
+      return $is_disabled;
+    }
+
+    if (!GFCommon::has_post_field($form['fields'])) {
+      return $is_disabled;
+    }
+
+    if (! $submission_feed || empty($submission_data['payment_amount'])) {
+      return $is_disabled;
+    }
+
+    $delay_post_creation = rgars( $submission_feed, 'meta/delay_post_creation', false);
+
+    if ($delay_post_creation == '1') {
+      return true;
+    }
+
+    return $is_disabled;
+  }
+
+  // $action value is function callback() return value
+  public function create_post_now( $entry, $action ) {
+    $form_id         = $entry['form_id'];
+    $form            = GFAPI::get_form( $form_id );
+    $submission_feed = $this->get_payment_feed($entry, $form);
+
+    if (rgar($submission_feed, 'addon_slug') != 'gravityformschip') {
+      return;
+    }
+
+    if (!GFCommon::has_post_field($form['fields'])) {
+      return;
+    }
+
+    if (rgars($submission_feed, 'meta/delay_post_creation') == '1') {
+      $this->log_debug(__METHOD__ . '(): Creating delayed post for entry id: #' . $entry['id']);
+      $post_id = RGFormsModel::create_post( $form, $entry );
+      $this->log_debug(__METHOD__ . '(): Post #' . $post_id . ' created for entry id: #' . $entry['id']);
+    }
+  }
 
   public function uninstall() {
     $option_names = array(
