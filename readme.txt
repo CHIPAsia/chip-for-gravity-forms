@@ -73,6 +73,10 @@ This plugin rely on CHIP AP ([WC_CHIP_ROOT_URL](https://gate.chip-in.asia)) as f
   - **/purchases/<id\>**
     - This is for getting payment status from CHIP
 
+= How to include Purchases ID on notification? =
+
+Set the tag {entry:transaction_id} at the event Payment Completion notification. You may refer to [GravityForms Merge Tag](https://docs.gravityforms.com/merge-tags/#entry-data) for more information.
+
 == Links ==
 
 [CHIP Website](https://www.chip-in.asia)

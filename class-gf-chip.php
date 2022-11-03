@@ -338,6 +338,14 @@ class GF_Chip extends GFPaymentAddOn {
       'tooltip'   => '<h6>' . esc_html__( 'Purchase Information', 'gravityformschip' ) . '</h6>' . esc_html__( 'Map your Form Fields to the available listed fields.', 'gravityformschip' )
     );
 
+    $other_settings_fields[] = array(
+      'name'      => 'cancelUrl',
+      'label'     => esc_html__( 'Cancel URL', 'gravityformschip' ),
+      'type'      => 'text',
+      'placeholder' => 'https://example.com/pages',
+      'tooltip'   => '<h6>' . esc_html__( 'Cancel URL', 'gravityformschip' ) . '</h6>' . esc_html__( 'Redirect to custom URL in the event of cancellation. Leaving blank will redirect back to form page in the event of cancellation. Note: You can set success behavior by setting confirmation redirect.', 'gravityformschip' )
+    );
+
     $other_settings_fields[] = $conditional_logic;
 
     return $other_settings_fields;
@@ -441,6 +449,7 @@ class GF_Chip extends GFPaymentAddOn {
       'send_receipt'     => $send_receipt == '1',
       'due'              => time() + (absint( $due_timing ) * 60),
       'brand_id'         => $brand_id,
+      'timezone'         => wp_timezone_string(), // experimental
       'client'           => array(
         'email'     => $email,
         'full_name' => substr($full_name,0,30),
@@ -610,6 +619,15 @@ class GF_Chip extends GFPaymentAddOn {
             
       $message = esc_html__('. Payment successful. ', 'gravityformschip');
       $url     = $this->get_confirmation_url( $entry_id, $form_id );
+    } else {
+      $processed_feeds = gform_get_meta($entry_id, 'processed_feeds');
+      $feed_id         = $processed_feeds['gravityformschip'][0];
+      $feed            = GFAPI::get_feed( $feed_id );
+      $cancel_url      = rgars($feed, 'meta/cancelUrl');
+
+      if ($cancel_url AND filter_var($cancel_url, FILTER_VALIDATE_URL)) {
+        $url = $cancel_url;
+      }
     }
 
     // Output payment status
