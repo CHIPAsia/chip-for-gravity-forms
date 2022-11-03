@@ -81,7 +81,7 @@ class GF_Chip extends GFPaymentAddOn {
       printf(
         // translators: $1$s opens a link tag, %2$s closes link tag.
         esc_html__(
-          'Cash, Card and Coin Handling Integrated Platform. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration where this configuration will function as a fallback for each settings in the forms.',
+          'Cash, Card and Coin Handling Integrated Platform. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration and it is not mandatory to set. You can still configure on per form basis.',
           'gravityformschip'
         ),
         '<a href="https://www.chip-in.asia/" target="_blank">',
@@ -431,7 +431,7 @@ class GF_Chip extends GFPaymentAddOn {
     $client_meta_data = $this->get_chip_client_meta_data( $feed, $entry, $form );
 
     if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
-      $secret_key  = rgar($gf_global_settings, 'secret_key');
+      $secret_key   = rgar($gf_global_settings, 'secret_key');
       $brand_id     = rgar($gf_global_settings, 'brand_id');
       $due_strict   = rgar($gf_global_settings, 'due_strict');
       $due_timing   = rgar($gf_global_settings, 'due_strict_timing', 60);
@@ -439,7 +439,7 @@ class GF_Chip extends GFPaymentAddOn {
     }
     
     if ($configuration_type == 'form'){
-      $secret_key  = rgars($feed, 'meta/secret_key');
+      $secret_key   = rgars($feed, 'meta/secret_key');
       $brand_id     = rgars($feed, 'meta/brand_id');
       $due_strict   = rgars($feed, 'meta/due_strict');
       $due_timing   = rgars($feed, 'meta/due_strict_timing', 60);
