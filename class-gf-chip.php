@@ -644,7 +644,7 @@ class GF_Chip extends GFPaymentAddOn {
       $form_id         = $entry['form_id'];
             
       $message = esc_html__('. Payment successful. ', 'gravityformschip');
-      $url     = $this->get_confirmation_url( $entry_id, $form_id );
+      $url     = $this->get_confirmation_url( $entry, $form_id );
     } else {
       $submission_feed = $this->get_payment_feed($entry);
       $cancel_url      = rgars($submission_feed, 'meta/cancelUrl');
@@ -668,16 +668,19 @@ class GF_Chip extends GFPaymentAddOn {
   }
 
   // This method inspired by gravityformsstripe plugin
-  public function get_confirmation_url( $entry_id, $form_id ) {
+  public function get_confirmation_url( $entry, $form_id ) {
     $redirect_url_args = array(
       'gf_chip_success' => 'true',
-      'entry_id'        => $entry_id,
+      'entry_id'        => $entry['id'],
       'form_id'         => $form_id
     );
 
     $redirect_url_args['hash'] = wp_hash( implode($redirect_url_args) );
     
-    return $this->get_redirect_url($redirect_url_args);
+    return add_query_arg(
+      $redirect_url_args,
+      rgar($entry, 'source_url')
+    );
   }
 
   // This method inspired by gravityformsstripe plugin
