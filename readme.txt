@@ -1,5 +1,5 @@
 === CHIP for Gravity Forms ===
-Contributors: wanzulnet
+Contributors: chipasia, wanzulnet
 Tags: chip, cash, card, coin
 Requires at least: 4.7
 Tested up to: 6.0
