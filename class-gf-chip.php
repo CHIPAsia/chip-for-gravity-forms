@@ -732,7 +732,7 @@ class GF_Chip extends GFPaymentAddOn {
   public function supported_notification_events( $form ) {
     return array(
 			'complete_payment'          => esc_html__( 'Payment Completed', 'gravityformschip' ),
-			// 'refund_payment'            => esc_html__( 'Payment Refunded', 'gravityformschip' ),
+			'refund_payment'            => esc_html__( 'Payment Refunded', 'gravityformschip' ),
 			'fail_payment'              => esc_html__( 'Payment Failed', 'gravityformschip' ),
 		);
 	}

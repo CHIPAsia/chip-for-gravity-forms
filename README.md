@@ -19,6 +19,10 @@ Set the **Brand ID** and **Secret Key** in the plugins settings.
 
 You can override the Global Configuration by setting in the Form specific configuraiton.
 
+## Refund
+
+Refund made through the WordPress Dashboard can only be made in full amount. Also, the success of the refund execution means, the refund has been successfully triggered to CHIP API. The completion of the refund is depending on the CHIP refund policy.
+
 ## Other
 
 Facebook: [Merchants & DEV Community](https://www.facebook.com/groups/3210496372558088)

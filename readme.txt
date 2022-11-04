@@ -77,6 +77,10 @@ This plugin rely on CHIP AP ([WC_CHIP_ROOT_URL](https://gate.chip-in.asia)) as f
 
 Set the tag {entry:transaction_id} at the event Payment Completion notification. You may refer to [GravityForms Merge Tag](https://docs.gravityforms.com/merge-tags/#entry-data) for more information.
 
+= Does refund initiated through WordPress Dashboard instant? =
+
+Refund made through WordPress Dashboard is still subject to CHIP refund policy. Having refund successful message in dashboard only indicates that CHIP API has been called for the refund process.
+
 == Links ==
 
 [CHIP Website](https://www.chip-in.asia)
