@@ -495,6 +495,11 @@ class GF_Chip extends GFPaymentAddOn {
     // Store chip payment id
     gform_update_meta( $entry_id, 'chip_payment_id', rgar($payment, 'id'),  rgar( $form, 'id' ));
 
+    // Add notification
+    $note = esc_html__( 'Customer redirected to payment page. ', 'gravityformschip' );
+    $note.= esc_html__( 'URL: ', 'gravityformschip' ) . $payment['checkout_url'];
+    $this->add_note( $entry['id'], $note, 'success' );
+
     $this->log_debug( __METHOD__ . "(): Attempt to create purchases successful " . print_r( $payment, true ) );
 
     return $payment['checkout_url'];
@@ -550,19 +555,20 @@ class GF_Chip extends GFPaymentAddOn {
     $entry_id = intval(rgget( 'entry_id' ));
     $this->log_debug( 'Started ' . __METHOD__ . "(): for entry id #" . $entry_id);
 
-    // Taking only the first array because chip feed should only one per entry.
-    if (count($processed_feeds['gravityformschip']) != 1){
-      $msg = 'Unexpected feed count for entry: #' . $entry_id;
-      $this->log_debug( __METHOD__ . "(): " . $msg );
-      wp_die($msg);
-    }
-
     // This is long way to get a feed_id from entry_id
     // Using the method provided by parent is the choice here
     // $processed_feeds = gform_get_meta($entry_id, 'processed_feeds');
     // $feed_id   = $processed_feeds['gravityformschip'][0];
     // $submission_feed = GFAPI::get_feed( $feed_id );
 
+    // Taking only the first array because chip feed should only one per entry.
+    // if (count($processed_feeds['gravityformschip']) != 1){
+    //   $msg = 'Unexpected feed count for entry: #' . $entry_id;
+    //   $this->log_debug( __METHOD__ . "(): " . $msg );
+    //   wp_die($msg);
+    // }
+
+    $entry           = GFAPI::get_entry($entry_id);
     $submission_feed = $this->get_payment_feed($entry);
 
     $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id is set to Feed ID #" . $submission_feed['id'] );
@@ -596,11 +602,12 @@ class GF_Chip extends GFPaymentAddOn {
     }
 
     $action = array(
-      'id'               => $payment_id,
-      'type'             => $type,
-      'transaction_id'   => $payment_id,
-      'entry_id'         => $entry_id,
-      'payment_method'   => $payment_method,
+      'id'             => $payment_id,
+      'type'           => $type,
+      'transaction_id' => $payment_id,
+      'entry_id'       => $entry_id,
+      'payment_method' => $payment_method,
+      'amount'         => number_format($chip_payment['purchase']['total'] / 100, 2),
     );
 
     // Acquire lock to prevent concurrency
