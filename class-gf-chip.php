@@ -38,9 +38,11 @@ class GF_Chip extends GFPaymentAddOn {
   public function pre_init() {
     // inspired by gravityformsstripe
     add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
-    add_action('gform_post_payment_action', array($this, 'create_post_now'), 10, 2);
+    add_action( 'gform_post_payment_action', array($this, 'create_post_now'), 10, 2 );
+    add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
+		add_action( 'gform_post_payment_refunded', array( $this, 'chip_refund_payment_api'), 10, 2 );
 
-    add_filter('gform_disable_post_creation', array( $this, 'disable_post_creation' ), 10, 3);
+    add_filter( 'gform_disable_post_creation', array( $this, 'disable_post_creation' ), 10, 3 );
 
     parent::pre_init();
   }
@@ -737,7 +739,7 @@ class GF_Chip extends GFPaymentAddOn {
     $submission_feed = $this->get_payment_feed($entry, $form);
     $submission_data = $this->get_submission_data($submission_feed, $form, $entry);
 
-    if (rgar($submission_feed, 'addon_slug') != 'gravityformschip') {
+    if (!$this->is_payment_gateway( $entry['id'] )) {
       return $is_disabled;
     }
 
@@ -764,7 +766,7 @@ class GF_Chip extends GFPaymentAddOn {
     $form            = GFAPI::get_form( $form_id );
     $submission_feed = $this->get_payment_feed($entry, $form);
 
-    if (rgar($submission_feed, 'addon_slug') != 'gravityformschip') {
+    if (!$this->is_payment_gateway( $entry['id'] )) {
       return;
     }
 
@@ -776,6 +778,103 @@ class GF_Chip extends GFPaymentAddOn {
       $this->log_debug(__METHOD__ . '(): Creating delayed post for entry id: #' . $entry['id']);
       $post_id = RGFormsModel::create_post( $form, $entry );
       $this->log_debug(__METHOD__ . '(): Post #' . $post_id . ' created for entry id: #' . $entry['id']);
+    }
+  }
+
+  // Refund button
+  public function entry_info( $form_id, $entry ) {
+
+    // return if no transaction_id
+    if (empty($entry['transaction_id']) OR empty($entry['payment_method']) OR $entry['payment_status'] != 'Paid' OR $entry['transaction_type'] != '1') {
+      return;
+    }
+
+    // return if payment gateway is not chip
+    if (!$this->is_payment_gateway( $entry['id'] )) {
+      return;
+    }
+
+		?>
+    <div id="gf_refund_container">
+      <div class="message" style="display:none;"></div>
+    </div>
+		<input id="refundpay" type="button" name="refundpay"
+		       value="<?php esc_html_e( 'Refund', 'gravityformschip' ) ?>" class="button"
+		       onclick="RefundPayment();"
+		       onkeypress="RefundPayment();"/>
+		<img src="<?php echo GFCommon::get_base_url() ?>/images/spinner.svg" id="refund_spinner"
+		     style="display: none;"/>
+
+		<script type="text/javascript">
+      function RefundPayment() {
+        
+        jQuery('#refund_spinner').fadeIn();
+
+        jQuery.post(ajaxurl, {
+						action                 : "gf_chip_refund_payment",
+						gf_chip_refund_payment : '<?php echo wp_create_nonce( 'gf_chip_refund_payment' ); ?>',
+						entryId                : '<?php echo absint( $entry['id'] ); ?>'
+					},
+					function (response) {
+						if (response) {
+							displayMessage(response, "error", "#gf_refund_container");
+						} else {
+							displayMessage(<?php echo json_encode( esc_html__( 'Refund has been executed successfully.', 'gravityformschip' ) ); ?>, "success", "#gf_refund_container" );
+
+              jQuery('#refundpay').hide();
+						}
+
+						jQuery('#refund_spinner').hide();
+					}
+				);
+      }
+		</script>
+
+		<?php
+	}
+
+  public function chip_refund_payment() {
+    check_admin_referer( 'gf_chip_refund_payment', 'gf_chip_refund_payment' );
+    $entry_id = absint( rgpost( 'entryId' ) );
+
+    $entry = GFAPI::get_entry($entry_id);
+
+    $action = array(
+      'transaction_id'   => $entry['transaction_id'],
+      'amount'           => $entry['payment_amount'],
+    );
+
+    if (!$this->refund_payment( $entry, $action )) {
+      esc_html_e( 'There was an error while refunding the payment.', 'gravityformschip' );
+    }
+
+    die();
+  }
+
+  public function chip_refund_payment_api($entry, $action) {
+    $submission_feed = $this->get_payment_feed($entry);
+
+    $this->log_debug( __METHOD__ . "(): Entry ID #" . $entry['id'] . " is set to Feed ID #" . $submission_feed['id'] );
+
+    $configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global');
+
+    if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
+      $secret_key = rgar($gf_global_settings, 'secret_key');
+      $brand_id   = rgar($gf_global_settings, 'brand_id');
+    }
+
+    if ($configuration_type == 'form'){
+      $secret_key = rgars($submission_feed, 'meta/secret_key');
+      $brand_id   = rgars($submission_feed, 'meta/brand_id');
+    }
+
+    $chip = GFChipAPI::get_instance($secret_key, $brand_id);
+    $result = $chip->refund_payment($action['transaction_id'], array('amount' => round($action['amount'] * 100)));
+    
+    if ( is_wp_error( $result ) || isset($result['__all__']) ) {
+      $this->log_debug( __METHOD__ . 'entry id: #' . $entry['id']. var_export($result['__all__'], true) );
+
+      return new WP_Error( 'error', var_export($result['__all__'], true) );
     }
   }
 
