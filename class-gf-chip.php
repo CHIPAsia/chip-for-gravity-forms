@@ -38,13 +38,38 @@ class GF_Chip extends GFPaymentAddOn {
   public function pre_init() {
     // inspired by gravityformsstripe
     add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
-    add_action( 'gform_post_payment_action', array($this, 'create_post_now'), 10, 2 );
     add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
 		add_action( 'gform_post_payment_refunded', array( $this, 'chip_refund_payment_api'), 10, 2 );
 
+    parent::pre_init();
+  }
+
+  public function init() {
     add_filter( 'gform_disable_post_creation', array( $this, 'disable_post_creation' ), 10, 3 );
 
-    parent::pre_init();
+    $this->add_delayed_payment_support(
+			array(
+				'option_label' => esc_html__( 'Create post only when payment is received.', 'gravityformschip' )
+			)
+		);
+    parent::init();
+  }
+
+  public function get_post_payment_actions_config( $feed_slug ) {
+    if ($feed_slug != $this->_slug) {
+      return array();
+    }
+
+    $form = $this->get_current_form();
+
+    if (GFCommon::has_post_field($form['fields'])) {
+      return array(
+	      'position' => 'before',
+			  'setting'  => 'conditionalLogic',
+		  );
+    }
+
+    return array();
   }
 
   public function supported_currencies( $currencies ) {
@@ -351,17 +376,6 @@ class GF_Chip extends GFPaymentAddOn {
       'tooltip'   => '<h6>' . esc_html__( 'Cancel URL', 'gravityformschip' ) . '</h6>' . esc_html__( 'Redirect to custom URL in the event of cancellation. Leaving blank will redirect back to form page in the event of cancellation. Note: You can set success behavior by setting confirmation redirect.', 'gravityformschip' )
     );
 
-    $form = $this->get_current_form();
-
-    if (GFCommon::has_post_field($form['fields'])) {
-      $other_settings_fields[] = array(
-          'name'    => 'delay_post_creation',
-          'label'   => esc_html__('Delay Post Creation', 'gravityformschip'),
-          'type'    => 'toggle',
-          'tooltip' => '<h6>' . esc_html__('Delay Post Creation', 'gravityformsbillplz') . '</h6>' . esc_html__('Enable this option if you would like to only create the post after payment has been received.', 'gravityformschip'),
-      );
-    }
-
     $other_settings_fields[] = $conditional_logic;
 
     return $other_settings_fields;
@@ -637,13 +651,13 @@ class GF_Chip extends GFPaymentAddOn {
     $entry_id = $callback_action['entry_id'];
     $entry    = GFAPI::get_entry( $entry_id );
     $url      = rgar($entry, 'source_url');
-    $message  = esc_html__('. Payment failed. ', 'gravityformschip');
+    $message  = __('. Payment failed. ', 'gravityformschip');
 
     if ($callback_action['type'] == 'complete_payment') {
       $entry_id        = $callback_action['entry_id'];
       $form_id         = $entry['form_id'];
             
-      $message = esc_html__('. Payment successful. ', 'gravityformschip');
+      $message = __('. Payment successful. ', 'gravityformschip');
       $url     = $this->get_confirmation_url( $entry, $form_id );
     } else {
       $submission_feed = $this->get_payment_feed($entry);
@@ -655,7 +669,7 @@ class GF_Chip extends GFPaymentAddOn {
     }
 
     // Output payment status
-    echo $message;
+    echo esc_html($message);
 
     // Output redirection link
     printf(
@@ -754,13 +768,7 @@ class GF_Chip extends GFPaymentAddOn {
       return $is_disabled;
     }
 
-    $delay_post_creation = rgars( $submission_feed, 'meta/delay_post_creation', false);
-
-    if ($delay_post_creation == '1') {
-      return true;
-    }
-
-    return $is_disabled;
+    return rgar( $submission_feed['meta'], "delay_{$this->_slug}" ) == '1' ? true : $is_disabled;
   }
 
   // $action value is function callback() return value
@@ -781,6 +789,29 @@ class GF_Chip extends GFPaymentAddOn {
       $this->log_debug(__METHOD__ . '(): Creating delayed post for entry id: #' . $entry['id']);
       $post_id = RGFormsModel::create_post( $form, $entry );
       $this->log_debug(__METHOD__ . '(): Post #' . $post_id . ' created for entry id: #' . $entry['id']);
+    }
+  }
+
+  public function complete_payment( &$entry, $action ) {
+		parent::complete_payment( $entry, $action );
+
+		$transaction_id = rgar( 'transaction_id', $action );
+		$form           = GFAPI::get_form( $entry['form_id'] );
+		$feed           = $this->get_payment_feed( $entry, $form );
+
+    // this is a hack to allow processing of delayed task
+    if( rgar( $feed['meta'], "delay_{$this->_slug}" ) == '1' ){
+      gform_update_meta( $entry['id'], "{$this->_slug}_is_fulfilled", false );
+    }
+
+		$this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
+
+		return true;
+	}
+
+  public function process_feed( $feed, $entry, $form ) {
+    if ($this->_bypass_feed_delay) {
+      RGFormsModel::create_post( $form, $entry );
     }
   }
 

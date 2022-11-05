@@ -2,7 +2,7 @@
 Contributors: chipasia, wanzulnet
 Tags: chip, cash, card, coin
 Requires at least: 4.7
-Tested up to: 6.0
+Tested up to: 6.1
 Stable tag: 1.0.0
 Requires PHP: 7.1
 License: GPLv3
@@ -80,6 +80,10 @@ Set the tag {entry:transaction_id} at the event Payment Completion notification.
 = Does refund initiated through WordPress Dashboard instant? =
 
 Refund made through WordPress Dashboard is still subject to CHIP refund policy. Having refund successful message in dashboard only indicates that CHIP API has been called for the refund process.
+
+= Why post creation is not delayed after installing Gravity Forms Advanced Post Creation plugin? =
+
+This plugin is not compatible to use together with [Gravity Forms Advanced Post Creation plugin](https://www.gravityforms.com/add-ons/advanced-post-creation/).
 
 == Links ==
 
