@@ -39,7 +39,7 @@ class GF_Chip extends GFPaymentAddOn {
     // inspired by gravityformsstripe
     add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
     add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
-		add_action( 'gform_post_payment_refunded', array( $this, 'chip_refund_payment_api'), 10, 2 );
+    add_action( 'gform_post_payment_refunded', array( $this, 'chip_refund_payment_api'), 10, 2 );
 
     parent::pre_init();
   }
@@ -48,10 +48,10 @@ class GF_Chip extends GFPaymentAddOn {
     add_filter( 'gform_disable_post_creation', array( $this, 'disable_post_creation' ), 10, 3 );
 
     $this->add_delayed_payment_support(
-			array(
-				'option_label' => esc_html__( 'Create post only when payment is received.', 'gravityformschip' )
-			)
-		);
+      array(
+        'option_label' => esc_html__( 'Create post only when payment is received.', 'gravityformschip' )
+      )
+    );
     parent::init();
   }
 
@@ -64,9 +64,9 @@ class GF_Chip extends GFPaymentAddOn {
 
     if (GFCommon::has_post_field($form['fields'])) {
       return array(
-	      'position' => 'before',
-			  'setting'  => 'conditionalLogic',
-		  );
+        'position' => 'before',
+        'setting'  => 'conditionalLogic',
+      );
     }
 
     return array();
@@ -74,6 +74,10 @@ class GF_Chip extends GFPaymentAddOn {
 
   public function supported_currencies( $currencies ) {
     return array('MYR' => $currencies['MYR']);
+  }
+
+  public function get_menu_icon() {
+    return plugins_url("assets/logo.svg", __FILE__);
   }
 
   public function plugin_settings_fields() {
@@ -778,11 +782,11 @@ class GF_Chip extends GFPaymentAddOn {
   // this method inspired by gravityformspaypal
   public function supported_notification_events( $form ) {
     return array(
-			'complete_payment'          => esc_html__( 'Payment Completed', 'gravityformschip' ),
-			'refund_payment'            => esc_html__( 'Payment Refunded', 'gravityformschip' ),
-			'fail_payment'              => esc_html__( 'Payment Failed', 'gravityformschip' ),
-		);
-	}
+      'complete_payment'          => esc_html__( 'Payment Completed', 'gravityformschip' ),
+      'refund_payment'            => esc_html__( 'Payment Refunded', 'gravityformschip' ),
+      'fail_payment'              => esc_html__( 'Payment Failed', 'gravityformschip' ),
+    );
+  }
 
   // default $is_disabled = false
   public function disable_post_creation($is_disabled, $form, $entry) {
@@ -826,21 +830,21 @@ class GF_Chip extends GFPaymentAddOn {
   }
 
   public function complete_payment( &$entry, $action ) {
-		parent::complete_payment( $entry, $action );
+    parent::complete_payment( $entry, $action );
 
-		$transaction_id = rgar( 'transaction_id', $action );
-		$form           = GFAPI::get_form( $entry['form_id'] );
-		$feed           = $this->get_payment_feed( $entry, $form );
+    $transaction_id = rgar( 'transaction_id', $action );
+    $form           = GFAPI::get_form( $entry['form_id'] );
+    $feed           = $this->get_payment_feed( $entry, $form );
 
     // this is a hack to allow processing of delayed task
     if( rgar( $feed['meta'], "delay_{$this->_slug}" ) == '1' ){
       gform_update_meta( $entry['id'], "{$this->_slug}_is_fulfilled", false );
     }
 
-		$this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
+    $this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
 
-		return true;
-	}
+    return true;
+  }
 
   public function process_feed( $feed, $entry, $form ) {
     if ($this->_bypass_feed_delay) {
@@ -861,45 +865,45 @@ class GF_Chip extends GFPaymentAddOn {
       return;
     }
 
-		?>
+    ?>
     <div id="gf_refund_container">
       <div class="message" style="display:none;"></div>
     </div>
-		<input id="refundpay" type="button" name="refundpay"
-		       value="<?php esc_html_e( 'Refund', 'gravityformschip' ) ?>" class="button"
-		       onclick="RefundPayment();"
-		       onkeypress="RefundPayment();"
+    <input id="refundpay" type="button" name="refundpay"
+           value="<?php esc_html_e( 'Refund', 'gravityformschip' ) ?>" class="button"
+           onclick="RefundPayment();"
+           onkeypress="RefundPayment();"
            <?php echo esc_attr( defined( 'GF_CHIP_DISABLE_REFUND_PAYMENT' ) ? 'disabled' : '' ) ?>/>
-		<img src="<?php echo GFCommon::get_base_url() ?>/images/spinner.svg" id="refund_spinner"
-		     style="display: none;"/>
+    <img src="<?php echo GFCommon::get_base_url() ?>/images/spinner.svg" id="refund_spinner"
+         style="display: none;"/>
 
-		<script type="text/javascript">
+    <script type="text/javascript">
       function RefundPayment() {
         
         jQuery('#refund_spinner').fadeIn();
 
         jQuery.post(ajaxurl, {
-						action                 : "gf_chip_refund_payment",
-						gf_chip_refund_payment : '<?php echo wp_create_nonce( 'gf_chip_refund_payment' ); ?>',
-						entryId                : '<?php echo absint( $entry['id'] ); ?>'
-					},
-					function (response) {
-						if (response) {
-							displayMessage(response, "error", "#gf_refund_container");
-						} else {
-							displayMessage(<?php echo json_encode( esc_html__( 'Refund has been executed successfully.', 'gravityformschip' ) ); ?>, "success", "#gf_refund_container" );
+            action                 : "gf_chip_refund_payment",
+            gf_chip_refund_payment : '<?php echo wp_create_nonce( 'gf_chip_refund_payment' ); ?>',
+            entryId                : '<?php echo absint( $entry['id'] ); ?>'
+          },
+          function (response) {
+            if (response) {
+              displayMessage(response, "error", "#gf_refund_container");
+            } else {
+              displayMessage(<?php echo json_encode( esc_html__( 'Refund has been executed successfully.', 'gravityformschip' ) ); ?>, "success", "#gf_refund_container" );
 
               jQuery('#refundpay').hide();
-						}
+            }
 
-						jQuery('#refund_spinner').hide();
-					}
-				);
+            jQuery('#refund_spinner').hide();
+          }
+        );
       }
-		</script>
+    </script>
 
-		<?php
-	}
+    <?php
+  }
 
   public function chip_refund_payment() {
     check_admin_referer( 'gf_chip_refund_payment', 'gf_chip_refund_payment' );
