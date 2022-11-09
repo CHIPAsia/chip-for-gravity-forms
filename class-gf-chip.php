@@ -868,7 +868,8 @@ class GF_Chip extends GFPaymentAddOn {
 		<input id="refundpay" type="button" name="refundpay"
 		       value="<?php esc_html_e( 'Refund', 'gravityformschip' ) ?>" class="button"
 		       onclick="RefundPayment();"
-		       onkeypress="RefundPayment();"/>
+		       onkeypress="RefundPayment();"
+           <?php echo esc_attr( defined( 'GF_CHIP_DISABLE_REFUND_PAYMENT' ) ? 'disabled' : '' ) ?>/>
 		<img src="<?php echo GFCommon::get_base_url() ?>/images/spinner.svg" id="refund_spinner"
 		     style="display: none;"/>
 
