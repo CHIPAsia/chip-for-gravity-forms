@@ -504,12 +504,12 @@ class GF_Chip extends GFPaymentAddOn {
       'send_receipt'     => $send_receipt == '1',
       'due'              => time() + (absint( $due_timing ) * 60),
       'brand_id'         => $brand_id,
-      'timezone'         => wp_timezone_string(), // experimental
       'client'           => array(
         'email'     => $email,
         'full_name' => substr($full_name,0,30),
       ),
       'purchase'         => array(
+        'timezone'   => apply_filters( 'gf_chip_purchase_timezone', $this->get_timezone() ),
         'currency'   => $currency,
         'notes'      => substr($notes, 0, 10000),
         'due_strict' => $due_strict == '1',
@@ -590,6 +590,14 @@ class GF_Chip extends GFPaymentAddOn {
 
     return $metadata;
 
+  }
+
+  public function get_timezone(){
+    if (preg_match('/^[A-z]+\/[A-z\_\/\-]+$/', wp_timezone_string())) {
+      return wp_timezone_string();
+    }
+
+    return 'UTC';
   }
 
   public function callback() {
