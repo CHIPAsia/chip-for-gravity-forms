@@ -417,9 +417,27 @@ class GF_Chip extends GFPaymentAddOn {
     $configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global');
 
     $payment_amount_location  = rgars( $feed, 'meta/paymentAmount'); // location for payment amount
-    $full_name_location       = rgars( $feed, 'meta/clientInformation_full_name'); // location for buyer full name
+    $name_location            = rgars( $feed, 'meta/clientInformation_full_name'); // location for buyer name
     $email_location           = rgars( $feed, 'meta/clientInformation_email'); // location for buyer email address
     $notes_location           = rgars( $feed, 'meta/purchaseInformation_notes'); // location for purchase notes
+
+    $is_full_name_selected    = false;
+    $full_name_location_array = array();
+
+    foreach ( $form['fields'] as $field ) {
+      if ( $field->type == 'name' ) {
+        if ($name_location != $field->id) {
+          break;
+        }
+
+        $is_full_name_selected = true;
+
+        $full_name_location_array[$field->id] = array();
+        foreach($field->inputs as $input) {
+          $full_name_location_array[$field->id][] = $input['id'];
+        }
+      }
+    }
 
     // This if the total amount choose to form total
     if ($payment_amount_location == 'form_total'){
@@ -440,9 +458,16 @@ class GF_Chip extends GFPaymentAddOn {
     }
 
     $currency  = rgar( $entry, 'currency');
-    $full_name = rgar( $entry, $full_name_location);
     $email     = rgar( $entry, $email_location);
     $notes     = rgar( $entry, $notes_location);
+    $full_name = rgar( $entry, $name_location, '');
+
+    if ( $is_full_name_selected ){
+      foreach($full_name_location_array[$name_location] as $full_name_location) {
+        $full_name .= ' ' . rgar( $entry, $full_name_location);
+      }
+      $full_name = trim($full_name);
+    }
 
     $client_meta_data = $this->get_chip_client_meta_data( $feed, $entry, $form );
 
