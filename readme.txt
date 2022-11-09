@@ -19,7 +19,9 @@ CHIP allows you to securely sell your products and get paid with Cash, Card and 
 == Screenshots ==
 * Fill up the form with Brand ID and Secret Key on Global Configuration.
 * Fill up the form with Brand ID and Secret Key on Form-specific Configuration.
-* Form that have integrated with CHIP. 
+* Form that have been integrated with CHIP.
+* Test mode payment page.
+* Confirmation page after successful payment.
 
 == Changelog ==
 
