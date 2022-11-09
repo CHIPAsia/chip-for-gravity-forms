@@ -902,6 +902,12 @@ class GF_Chip extends GFPaymentAddOn {
 
   public function chip_refund_payment() {
     check_admin_referer( 'gf_chip_refund_payment', 'gf_chip_refund_payment' );
+
+    if (defined( 'GF_CHIP_DISABLE_REFUND_PAYMENT' )) {
+      esc_html_e( 'Refund feature has been disabled by administrators.', 'gravityformschip' );
+      die();
+    }
+
     $entry_id = absint( rgpost( 'entryId' ) );
 
     $entry = GFAPI::get_entry($entry_id);
