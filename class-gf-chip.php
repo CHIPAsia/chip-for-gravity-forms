@@ -425,16 +425,13 @@ class GF_Chip extends GFPaymentAddOn {
     $email_location           = rgars( $feed, 'meta/clientInformation_email'); // location for buyer email address
     $notes_location           = rgars( $feed, 'meta/purchaseInformation_notes'); // location for purchase notes
 
-    $is_full_name_selected    = false;
     $full_name_location_array = array();
 
     foreach ( $form['fields'] as $field ) {
       if ( $field->type == 'name' ) {
         if ($name_location != $field->id) {
-          break;
+          continue;
         }
-
-        $is_full_name_selected = true;
 
         $full_name_location_array[$field->id] = array();
         foreach($field->inputs as $input) {
@@ -466,11 +463,13 @@ class GF_Chip extends GFPaymentAddOn {
     $notes     = rgar( $entry, $notes_location);
     $full_name = rgar( $entry, $name_location, '');
 
-    if ( $is_full_name_selected ){
-      foreach($full_name_location_array[$name_location] as $full_name_location) {
-        $full_name .= ' ' . rgar( $entry, $full_name_location);
+    if ( !empty($full_name_location_array) ){
+      if ( array_key_exists( $name_location, $full_name_location_array ) ) {
+        foreach($full_name_location_array[$name_location] as $full_name_location) {
+          $full_name .= ' ' . rgar( $entry, $full_name_location);
+        }
+        $full_name = trim($full_name);
       }
-      $full_name = trim($full_name);
     }
 
     $client_meta_data = $this->get_chip_client_meta_data( $feed, $entry, $form );
