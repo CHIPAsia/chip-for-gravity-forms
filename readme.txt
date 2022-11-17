@@ -87,6 +87,13 @@ Refund made through WordPress Dashboard is still subject to CHIP refund policy. 
 
 This plugin is not compatible to use together with [Gravity Forms Advanced Post Creation plugin](https://www.gravityforms.com/add-ons/advanced-post-creation/).
 
+= How to disable refund feature? =
+
+You need to paste the code below in your wp-config.php to disable refund.
+```
+define( 'GF_CHIP_DISABLE_REFUND_PAYMENT', true);
+```
+
 == Links ==
 
 [CHIP Website](https://www.chip-in.asia)
