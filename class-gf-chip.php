@@ -539,10 +539,16 @@ class GF_Chip extends GFPaymentAddOn {
     // Store chip payment id
     gform_update_meta( $entry_id, 'chip_payment_id', rgar($payment, 'id'),  rgar( $form, 'id' ));
 
-    // Add notification
+    // Add note
     $note = esc_html__( 'Customer redirected to payment page. ', 'gravityformschip' );
     $note.= esc_html__( 'URL: ', 'gravityformschip' ) . $payment['checkout_url'];
     $this->add_note( $entry['id'], $note, 'success' );
+
+    // Add is test note
+    if ( $payment['is_test'] === true ) {
+      $note = __( 'This is test environment where payment status is simulated.', 'gravityformschip' );
+      $this->add_note( $entry['id'], $note, 'error' );
+    }
 
     $this->log_debug( __METHOD__ . "(): Attempt to create purchases successful " . print_r( $payment, true ) );
 

@@ -2,7 +2,7 @@
 Contributors: chipasia, wanzulnet
 Tags: chip, cash, card, coin
 Requires at least: 4.7
-Tested up to: 6.1
+Tested up to: 6.2
 Stable tag: 1.0.0
 Requires PHP: 7.1
 License: GPLv3
