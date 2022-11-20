@@ -39,7 +39,6 @@ class GF_Chip extends GFPaymentAddOn {
     // inspired by gravityformsstripe
     add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
     add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
-    add_action( 'gform_post_payment_refunded', array( $this, 'chip_refund_payment_api'), 10, 2 );
 
     parent::pre_init();
   }
@@ -921,10 +920,34 @@ class GF_Chip extends GFPaymentAddOn {
     $entry_id = absint( rgpost( 'entryId' ) );
 
     $entry = GFAPI::get_entry($entry_id);
+    $feed  = $this->get_payment_feed($entry);
+
+    $this->log_debug( __METHOD__ . "(): Entry ID #" . $entry['id'] . " is set to Feed ID #" . $feed['id'] );
+
+    $configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global' );
+
+    if ( $gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings') ){
+      $secret_key = rgar($gf_global_settings, 'secret_key');
+      $brand_id   = rgar($gf_global_settings, 'brand_id');
+    }
+
+    if ($configuration_type == 'form'){
+      $secret_key = rgars($feed, 'meta/secret_key');
+      $brand_id   = rgars($feed, 'meta/brand_id');
+    }
+
+    $chip       = GFChipAPI::get_instance( $secret_key, $brand_id );
+    $payment_id = rgar( $entry, 'transaction_id' );
+    $payment    = $chip->refund_payment( $payment_id, [] );
+
+    if ( !is_array($payment) || !array_key_exists('id', $payment) ) {
+      echo esc_html(sprintf( __( 'There was an error while refunding the payment. %s', 'gravityformschip' ), var_export($payment, true) ));
+      die();
+    }
 
     $action = array(
-      'transaction_id'   => $entry['transaction_id'],
-      'amount'           => $entry['payment_amount'],
+      'transaction_id' => $payment['id'],
+      'amount'         => $entry['payment_amount'],
     );
 
     if (!$this->refund_payment( $entry, $action )) {
@@ -932,33 +955,6 @@ class GF_Chip extends GFPaymentAddOn {
     }
 
     die();
-  }
-
-  public function chip_refund_payment_api($entry, $action) {
-    $submission_feed = $this->get_payment_feed($entry);
-
-    $this->log_debug( __METHOD__ . "(): Entry ID #" . $entry['id'] . " is set to Feed ID #" . $submission_feed['id'] );
-
-    $configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global');
-
-    if ($gf_global_settings = get_option('gravityformsaddon_gravityformschip_settings')){
-      $secret_key = rgar($gf_global_settings, 'secret_key');
-      $brand_id   = rgar($gf_global_settings, 'brand_id');
-    }
-
-    if ($configuration_type == 'form'){
-      $secret_key = rgars($submission_feed, 'meta/secret_key');
-      $brand_id   = rgars($submission_feed, 'meta/brand_id');
-    }
-
-    $chip = GFChipAPI::get_instance($secret_key, $brand_id);
-    $result = $chip->refund_payment($action['transaction_id'], array('amount' => round($action['amount'] * 100)));
-    
-    if ( is_wp_error( $result ) || isset($result['__all__']) ) {
-      $this->log_debug( __METHOD__ . 'entry id: #' . $entry['id']. var_export($result['__all__'], true) );
-
-      return new WP_Error( 'error', var_export($result['__all__'], true) );
-    }
   }
 
   public function uninstall() {
