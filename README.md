@@ -4,7 +4,7 @@ This module adds CHIP payment method option to your Gravity Forms.
 
 ## Installation
 
-* [Download zip file of Gravity Forms plugin.](https://github.com/CHIPAsia/chip-for-gravity-forms/archive/master.zip)
+* [Download zip file of Gravity Forms plugin.](https://github.com/CHIPAsia/chip-for-gravity-forms/archive/refs/heads/main.zip)
 * Log in to your Wordpress admin panel and go: **Plugins** -> **Add New**
 * Select **Upload Plugin**, choose zip file you downloaded in step 1 and press **Install Now**
 * Activate plugin
