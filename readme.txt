@@ -55,9 +55,6 @@ WordPress codex contains [instructions on how to do this here](http://codex.word
 
 Automatic updates should work like a charm; as always though, ensure you backup your site just in case.
 
-If on the off-chance you do encounter issues with the shop/category pages after an update you simply need to flush the permalinks by going to WordPress > Settings > Permalinks and hitting 'save'. That should return things to normal.
-
-
 == Frequently Asked Questions ==
 
 = Where is the Brand ID and Secret Key located? =
