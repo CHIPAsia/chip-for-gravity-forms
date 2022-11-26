@@ -1,4 +1,6 @@
 # CHIP for Gravity Forms
+[![WP compatibility](https://plugintests.com/plugins/wporg/chip-for-gravity-forms/wp-badge.svg)](https://plugintests.com/plugins/wporg/chip-for-gravity-forms/latest)
+[![PHP compatibility](https://plugintests.com/plugins/wporg/chip-for-gravity-forms/php-badge.svg)](https://plugintests.com/plugins/wporg/chip-for-gravity-forms/latest)
 
 This module adds CHIP payment method option to your Gravity Forms.
 
