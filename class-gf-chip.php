@@ -520,7 +520,7 @@ class GF_Chip extends GFPaymentAddOn {
       'success_redirect' => $this->get_redirect_url( $redirect_url_args ),
       'failure_redirect' => $this->get_redirect_url( $redirect_url_args ),
       'creator_agent'    => 'Gravity Forms: '. GF_CHIP_MODULE_VERSION,
-      'reference'        => $reference,
+      'reference'        => empty( $reference ) ? $entry_id : $reference,
       'platform'         => 'gravityforms',
       'send_receipt'     => $send_receipt == '1',
       'due'              => time() + ( absint( $due_timing ) * 60 ),
