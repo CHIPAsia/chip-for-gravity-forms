@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, cash, card, coin
 Requires at least: 4.7
 Tested up to: 6.2
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 Requires PHP: 7.1
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -24,6 +24,9 @@ CHIP allows you to securely sell your products and get paid with Cash, Card and 
 * Confirmation page after successful payment.
 
 == Changelog ==
+
+= 1.0.2 - 2022-12-15 =
+* Added - Feature for setting reference value.
 
 = 1.0.1 - 2022-11-20 =
 * Add - Note when payment is made using test mode.

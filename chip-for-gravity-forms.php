@@ -4,7 +4,7 @@
  * Plugin Name: CHIP for Gravity Forms
  * Plugin URI: https://wordpress.org/plugins/chip-for-woocommerce/
  * Description: Cash, Card and Coin Handling Integrated Platform
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Chip In Sdn Bhd
  * Author URI: http://www.chip-in.asia
  * 
@@ -15,7 +15,7 @@
 
 defined( 'ABSPATH' ) || die();
 
-define( 'GF_CHIP_MODULE_VERSION', 'v1.0.1');
+define( 'GF_CHIP_MODULE_VERSION', 'v1.0.2');
 define( 'GF_CHIP_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 
 add_action( 'gform_loaded', array( 'GF_CHIP_Bootstrap', 'load_addon' ), 5 );
