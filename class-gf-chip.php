@@ -111,7 +111,7 @@ class GF_Chip extends GFPaymentAddOn {
       printf(
         // translators: $1$s opens a link tag, %2$s closes link tag.
         esc_html__(
-          'Cash, Card and Coin Handling Integrated Platform. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration and it is not mandatory to set. You can still configure on per form basis.',
+          'CHIP. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration and it is not mandatory to set. You can still configure on per form basis.',
           'gravityformschip'
         ),
         '<a href="https://www.chip-in.asia/" target="_blank">',
