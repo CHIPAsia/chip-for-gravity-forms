@@ -167,6 +167,85 @@ class GF_Chip extends GFPaymentAddOn {
         'placeholder' => '60 for 60 minutes',
         'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'gravityformschip' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'gravityformschip' )
       ),
+      array(
+        'name'    => 'pass_fixed_charges',
+        'label'   => esc_html__( 'Pass fixed charges to customer', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Pass Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'pass_percentage_charges',
+        'label'   => esc_html__( 'Pass percentage charges to customer', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Pass Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'pass_lowest_charges',
+        'label'   => esc_html__( 'Pass lowest charges to customer', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Pass Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'charges_mechanism',
+        'label'         => esc_html__( 'Select Card to force only visa and mastercard.', 'gravityformschip' ),
+        'type'    => 'select',
+        'tooltip' => '<h6>' . esc_html__('Sale can be supported for all payment methods and Authorize only supported for Visa and Mastercard', 'gravityformschip') . '</h6>',
+        'choices' => array(
+          array(
+            'label' => __('FPX', 'gravityformschip'),
+            'value' => 'fpx',
+          ),
+          array(
+            'label' => __('Card', 'gravityformschip'),
+            'value' => 'card',
+          )
+        ),
+      ),
+      array(
+        'name'    => 'debit_fixed_charges',
+        'label'   => esc_html__( 'Debit fixed charges', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Debit Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'debit_percentage_charges',
+        'label'   => esc_html__( 'Debit percentage charges', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Debit Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'debit_lowest_charges',
+        'label'   => esc_html__( 'Debit lowest charges', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Debit Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'credit_fixed_charges',
+        'label'   => esc_html__( 'Credit fixed charges', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Credit Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'credit_percentage_charges',
+        'label'   => esc_html__( 'Credit percentage charges', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Credit Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
+      ),
+      array(
+        'name'    => 'credit_lowest_charges',
+        'label'   => esc_html__( 'Credit lowest charges', 'gravityformschip' ),
+        'type'    => 'text',
+        'tooltip' => '<h6>' . esc_html__( 'Credit Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
+        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+      ),
     );
   }
 
@@ -331,7 +410,86 @@ class GF_Chip extends GFPaymentAddOn {
           'type'        => 'text',
           'placeholder' => '60 for 60 minutes',
           'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'gravityformschip' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'gravityformschip' )
-        ),        
+        ),
+        array(
+          'name'    => 'pass_fixed_charges',
+          'label'   => esc_html__( 'Pass fixed charges to customer', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Pass Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'pass_percentage_charges',
+          'label'   => esc_html__( 'Pass percentage charges to customer', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Pass Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'pass_lowest_charges',
+          'label'   => esc_html__( 'Pass lowest charges to customer', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Pass Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+        ),
+        array(
+          'name'          => 'charges_mechanism',
+          'label'         => esc_html__( 'Select Card to force only visa and mastercard.', 'gravityformschip' ),
+          'type'          => 'select',
+          'tooltip'       => '<h6>' . esc_html__('Sale can be supported for all payment methods and Authorize only supported for Visa and Mastercard', 'gravityformschip') . '</h6>',
+          'choices' => array(
+            array(
+              'label' => __('FPX', 'gravityformschip'),
+              'value' => 'fpx',
+            ),
+            array(
+              'label' => __('Card', 'gravityformschip'),
+              'value' => 'card',
+            )
+          ),
+        ),
+        array(
+          'name'    => 'debit_fixed_charges',
+          'label'   => esc_html__( 'Debit fixed charges', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Debit Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'debit_percentage_charges',
+          'label'   => esc_html__( 'Debit percentage charges', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Debit Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'debit_lowest_charges',
+          'label'   => esc_html__( 'Debit lowest charges', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Debit Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'credit_fixed_charges',
+          'label'   => esc_html__( 'Credit fixed charges', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Credit Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'credit_percentage_charges',
+          'label'   => esc_html__( 'Credit percentage charges', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Credit Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
+        ),
+        array(
+          'name'    => 'credit_lowest_charges',
+          'label'   => esc_html__( 'Credit lowest charges', 'gravityformschip' ),
+          'type'    => 'text',
+          'tooltip' => '<h6>' . esc_html__( 'Credit Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
+          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
+        ),
       )
     );
 
@@ -498,6 +656,10 @@ class GF_Chip extends GFPaymentAddOn {
       $due_strict   = rgar( $gf_global_settings, 'due_strict' );
       $due_timing   = rgar( $gf_global_settings, 'due_strict_timing', 60 );
       $send_receipt = rgar( $gf_global_settings, 'send_receipt', false );
+      $fix_charges  = rgar( $gf_global_settings, 'pass_fixed_charges' );
+      $per_charges  = rgar( $gf_global_settings, 'pass_percentage_charges' );
+      $low_charges  = rgar( $gf_global_settings, 'pass_lowest_charges' );
+      $charges_mec  = rgar( $gf_global_settings, 'charges_mechanism' );
     }
     
     if ($configuration_type == 'form'){
@@ -506,6 +668,10 @@ class GF_Chip extends GFPaymentAddOn {
       $due_strict   = rgars( $feed, 'meta/due_strict' );
       $due_timing   = rgars( $feed, 'meta/due_strict_timing', 60 );
       $send_receipt = rgars( $feed, 'meta/send_receipt', false );
+      $fix_charges  = rgars( $feed, 'meta/pass_fixed_charges' );
+      $per_charges  = rgars( $feed, 'meta/pass_percentage_charges' );
+      $low_charges  = rgars( $feed, 'meta/pass_lowest_charges' );
+      $charges_mec  = rgars( $feed, 'meta/charges_mechanism' );
     }
 
     $chip = GFChipAPI::get_instance( $secret_key, $brand_id );
@@ -544,6 +710,35 @@ class GF_Chip extends GFPaymentAddOn {
 
     // merge client array with client meta data array
     $params['client'] += $client_meta_data;
+
+    // add gateway charges calculation
+    $price_charges = 0;
+
+    if (!empty(round($amount))) {
+      $price_charges += round($amount) * ( $per_charges / 100 / 100 ); // 101 for 1.01%
+    }      
+
+    if (!empty(round($fix_charges))) {
+      $price_charges += $fix_charges;
+    }
+
+    if (!empty(round($low_charges))) {
+      if (round($low_charges) > round($price_charges)) {
+        $price_charges = $low_charges;
+      }
+    }
+
+    if ($price_charges != 0) {
+      $params['purchase']['products'][] = array(
+        'name'  => __('Charges','gravityformschip'),
+        'price' => round($price_charges),
+      );
+    }
+
+    if ($charges_mec == 'card') {
+      $params['payment_method_whitelist'] = array('visa', 'mastercard');
+      $params['skip_capture'] = true;
+    }
 
     $this->log_debug( __METHOD__ . "(): Params keys " . print_r( $params, true ) );
 
@@ -627,6 +822,31 @@ class GF_Chip extends GFPaymentAddOn {
     return 'UTC';
   }
 
+  private function get_card_charges($chip_payment, $charges) {
+    $card_type = $chip_payment['transaction_data']['extra']['card_type']; // credit/debit
+
+    $fix_setting = $charges[$card_type . '_fixed'];
+    $per_setting = $charges[$card_type . '_percentage'];
+    $low_setting = $charges[$card_type . '_lowest'];
+
+    $chip_qty = $chip_payment['purchase']['products'][0]['quantity'];
+    $chip_price = $chip_payment['purchase']['products'][0]['price'];
+
+    $chip_total = $chip_qty * $chip_price;
+
+    $total = 0;
+    $total = $total + ($chip_total * ($per_setting / 100 / 100));
+    $total = $total + $fix_setting;
+
+    if (!empty(round($low_setting))) {
+      if (round($low_setting) > round($total)) {
+        $total = $low_setting;
+      }
+    }
+
+    return $chip_total + $total;
+  }
+
   public function callback() {
     $entry_id = intval( rgget( 'entry_id' ) );
     $this->log_debug( 'Started ' . __METHOD__ . "(): for entry id #" . $entry_id );
@@ -654,19 +874,59 @@ class GF_Chip extends GFPaymentAddOn {
     if ( $gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' ) ){
       $secret_key = rgar( $gf_global_settings, 'secret_key' );
       $brand_id   = rgar( $gf_global_settings, 'brand_id' );
+
+      $debit_fixed_charges = rgar( $gf_global_settings, 'debit_fixed_charges' );
+      $debit_percentage_charges = rgar( $gf_global_settings, 'debit_percentage_charges' );
+      $debit_lowest_charges = rgar( $gf_global_settings, 'debit_lowest_charges' );
+
+      $credit_fixed_charges = rgar( $gf_global_settings, 'credit_fixed_charges' );
+      $credit_percentage_charges = rgar( $gf_global_settings, 'credit_percentage_charges' );
+      $credit_lowest_charges = rgar( $gf_global_settings, 'credit_lowest_charges' );
     }
 
     if ( $configuration_type == 'form' ) {
       $secret_key = rgars( $submission_feed, 'meta/secret_key' );
       $brand_id   = rgars( $submission_feed, 'meta/brand_id' );
+
+      $debit_fixed_charges = rgars( $submission_feed, 'debit_fixed_charges' );
+      $debit_percentage_charges = rgars( $submission_feed, 'debit_percentage_charges' );
+      $debit_lowest_charges = rgars( $submission_feed, 'debit_lowest_charges' );
+
+      $credit_fixed_charges = rgars( $submission_feed, 'credit_fixed_charges' );
+      $credit_percentage_charges = rgars( $submission_feed, 'credit_percentage_charges' );
+      $credit_lowest_charges = rgars( $submission_feed, 'credit_lowest_charges' );
     }
+
+    $charges = array(
+      'debit_fixed' => $debit_fixed_charges,
+      'debit_percentage' => $debit_percentage_charges,
+      'debit_lowest' => $debit_lowest_charges,
+      'credit_fixed' => $credit_fixed_charges,
+      'credit_percentage' => $credit_percentage_charges,
+      'credit_lowest' => $credit_lowest_charges,
+    );
 
     $chip = GFChipAPI::get_instance( $secret_key, $brand_id );
 
     // Get CHIP Payment ID
     $payment_id = gform_get_meta( $entry_id, 'chip_payment_id' );
 
-    $chip_payment     = $chip->get_payment( $payment_id );
+    $chip_payment = $chip->get_payment( $payment_id );
+    
+    if ($chip_payment['status'] == 'preauthorized') {
+      $total_with_charges = $this->get_card_charges($chip_payment, $charges);
+
+      $total_preauthorized = $chip_payment['payment']['amount'];
+
+      if ($total_with_charges > $total_preauthorized) {
+        $chip->capture_payment($payment_id);
+      } else {
+        $chip->capture_payment($payment_id, array('amount' => round($total_with_charges)));
+      }
+
+      $chip_payment = $chip->get_payment( $payment_id );
+    }
+
     $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id get purchases information" . print_r($chip_payment, true) );
 
     $transaction_data = rgar( $chip_payment, 'transaction_data' );

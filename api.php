@@ -46,6 +46,11 @@ class GFChipAPI
     return $result;
   }
 
+  public function capture_payment($payment_id, $params = array())
+  {
+    return $this->call('POST', "/purchases/{$payment_id}/capture/", $params);
+  }
+
   public function was_payment_successful($payment_id)
   {
     $result = $this->get_payment($payment_id);
