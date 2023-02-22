@@ -101,7 +101,7 @@ class GF_Chip extends GFPaymentAddOn {
       );
     }
 
-    return $configuration;
+    return apply_filters('gf_chip_plugin_settings_fields', $configuration);
   }
 
   public function get_description() {
@@ -166,7 +166,7 @@ class GF_Chip extends GFPaymentAddOn {
         'type'        => 'text',
         'placeholder' => '60 for 60 minutes',
         'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'gravityformschip' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'gravityformschip' )
-      ),
+      )
     );
   }
 
@@ -242,7 +242,7 @@ class GF_Chip extends GFPaymentAddOn {
     unset( $feed_settings_fields[0]['fields'][1]['choices'][2] );
 
     // Ensure transaction type mandatory
-    $transaction_type_array = $feed_settings_fields[0]['fields'][1]['required'] = true;
+    $feed_settings_fields[0]['fields'][1]['required'] = true;
 
     // Temporarily remove transaction type section
     $transaction_type_array = $feed_settings_fields[0]['fields'][1];
@@ -331,7 +331,7 @@ class GF_Chip extends GFPaymentAddOn {
           'type'        => 'text',
           'placeholder' => '60 for 60 minutes',
           'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'gravityformschip' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'gravityformschip' )
-        ),        
+        ),
       )
     );
 
@@ -342,7 +342,7 @@ class GF_Chip extends GFPaymentAddOn {
     $feed_settings_fields[] = $product_and_services;
     $feed_settings_fields[] = $other_settings;
 
-    return $feed_settings_fields;
+    return apply_filters( 'gf_chip_feed_settings_fields', $feed_settings_fields );
   }
 
   public function other_settings_fields() {
@@ -545,6 +545,9 @@ class GF_Chip extends GFPaymentAddOn {
     // merge client array with client meta data array
     $params['client'] += $client_meta_data;
 
+    // enable customization for gateway charges
+    $params = apply_filters( 'gf_chip_purchases_api_parameters', $params, array($feed, $submission_data, $form, $entry) );
+
     $this->log_debug( __METHOD__ . "(): Params keys " . print_r( $params, true ) );
 
     $payment = $chip->create_payment( $params );
@@ -666,7 +669,8 @@ class GF_Chip extends GFPaymentAddOn {
     // Get CHIP Payment ID
     $payment_id = gform_get_meta( $entry_id, 'chip_payment_id' );
 
-    $chip_payment     = $chip->get_payment( $payment_id );
+    $chip_payment = $chip->get_payment( $payment_id );
+
     $this->log_debug( __METHOD__ . "(): Entry ID #$entry_id get purchases information" . print_r($chip_payment, true) );
 
     $transaction_data = rgar( $chip_payment, 'transaction_data' );
