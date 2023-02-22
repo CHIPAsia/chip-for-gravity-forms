@@ -101,7 +101,7 @@ class GF_Chip extends GFPaymentAddOn {
       );
     }
 
-    return $configuration;
+    return apply_filters('gf_chip_plugin_settings_fields', $configuration);
   }
 
   public function get_description() {
@@ -166,28 +166,7 @@ class GF_Chip extends GFPaymentAddOn {
         'type'        => 'text',
         'placeholder' => '60 for 60 minutes',
         'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'gravityformschip' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'gravityformschip' )
-      ),
-      array(
-        'name'    => 'pass_fixed_charges',
-        'label'   => esc_html__( 'Pass fixed charges to customer (cents)', 'gravityformschip' ),
-        'type'    => 'text',
-        'tooltip' => '<h6>' . esc_html__( 'Pass Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
-        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
-      ),
-      array(
-        'name'    => 'pass_percentage_charges',
-        'label'   => esc_html__( 'Pass percentage charges to customer (basis point)', 'gravityformschip' ),
-        'type'    => 'text',
-        'tooltip' => '<h6>' . esc_html__( 'Pass Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
-        'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
-      ),
-      array(
-        'name'    => 'pass_lowest_charges',
-        'label'   => esc_html__( 'Pass lowest charges to customer (cents)', 'gravityformschip' ),
-        'type'    => 'text',
-        'tooltip' => '<h6>' . esc_html__( 'Pass Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
-        'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
-      ),
+      )
     );
   }
 
@@ -263,7 +242,7 @@ class GF_Chip extends GFPaymentAddOn {
     unset( $feed_settings_fields[0]['fields'][1]['choices'][2] );
 
     // Ensure transaction type mandatory
-    $transaction_type_array = $feed_settings_fields[0]['fields'][1]['required'] = true;
+    $feed_settings_fields[0]['fields'][1]['required'] = true;
 
     // Temporarily remove transaction type section
     $transaction_type_array = $feed_settings_fields[0]['fields'][1];
@@ -353,27 +332,6 @@ class GF_Chip extends GFPaymentAddOn {
           'placeholder' => '60 for 60 minutes',
           'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'gravityformschip' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'gravityformschip' )
         ),
-        array(
-          'name'    => 'pass_fixed_charges',
-          'label'   => esc_html__( 'Pass fixed charges to customer (cents)', 'gravityformschip' ),
-          'type'    => 'text',
-          'tooltip' => '<h6>' . esc_html__( 'Pass Fixed Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass fixed charges to the customer', 'gravityformschip' ),
-          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
-        ),
-        array(
-          'name'    => 'pass_percentage_charges',
-          'label'   => esc_html__( 'Pass percentage charges to customer (basis point)', 'gravityformschip' ),
-          'type'    => 'text',
-          'tooltip' => '<h6>' . esc_html__( 'Pass Percentage Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass percentage charges to the customer', 'gravityformschip' ),
-          'placeholder' => esc_html__('Set 101 for 1.01% charges', 'gravityformschip'),
-        ),
-        array(
-          'name'    => 'pass_lowest_charges',
-          'label'   => esc_html__( 'Pass lowest charges to customer (cents)', 'gravityformschip' ),
-          'type'    => 'text',
-          'tooltip' => '<h6>' . esc_html__( 'Pass Lowest Charges', 'gravityformschip' ) . '</h6>' . esc_html__( 'Pass lowest charges to the customer', 'gravityformschip' ),
-          'placeholder' => esc_html__('Set 100 for RM 1 charges', 'gravityformschip'),
-        ),
       )
     );
 
@@ -384,7 +342,7 @@ class GF_Chip extends GFPaymentAddOn {
     $feed_settings_fields[] = $product_and_services;
     $feed_settings_fields[] = $other_settings;
 
-    return $feed_settings_fields;
+    return apply_filters( 'gf_chip_feed_settings_fields', $feed_settings_fields );
   }
 
   public function other_settings_fields() {
@@ -540,9 +498,6 @@ class GF_Chip extends GFPaymentAddOn {
       $due_strict   = rgar( $gf_global_settings, 'due_strict' );
       $due_timing   = rgar( $gf_global_settings, 'due_strict_timing', 60 );
       $send_receipt = rgar( $gf_global_settings, 'send_receipt', false );
-      $fix_charges  = rgar( $gf_global_settings, 'pass_fixed_charges' );
-      $per_charges  = rgar( $gf_global_settings, 'pass_percentage_charges' );
-      $low_charges  = rgar( $gf_global_settings, 'pass_lowest_charges' );
     }
     
     if ($configuration_type == 'form'){
@@ -551,9 +506,6 @@ class GF_Chip extends GFPaymentAddOn {
       $due_strict   = rgars( $feed, 'meta/due_strict' );
       $due_timing   = rgars( $feed, 'meta/due_strict_timing', 60 );
       $send_receipt = rgars( $feed, 'meta/send_receipt', false );
-      $fix_charges  = rgars( $feed, 'meta/pass_fixed_charges' );
-      $per_charges  = rgars( $feed, 'meta/pass_percentage_charges' );
-      $low_charges  = rgars( $feed, 'meta/pass_lowest_charges' );
     }
 
     $chip = GFChipAPI::get_instance( $secret_key, $brand_id );
@@ -593,29 +545,8 @@ class GF_Chip extends GFPaymentAddOn {
     // merge client array with client meta data array
     $params['client'] += $client_meta_data;
 
-    // add gateway charges calculation
-    $price_charges = 0;
-
-    if (!empty(round($amount))) {
-      $price_charges += round($amount) * ( $per_charges / 100 / 100 ); // 101 for 1.01%
-    }      
-
-    if (!empty(round($fix_charges))) {
-      $price_charges += $fix_charges;
-
-      if (!empty(round($low_charges))) {
-        if (round($low_charges) > round($price_charges)) {
-          $price_charges = $low_charges;
-        }
-      }
-  
-      if (round($price_charges) > 0) {
-        $params['purchase']['products'][] = array(
-          'name'  => __('Charges','gravityformschip'),
-          'price' => round($price_charges),
-        );
-      }
-    }
+    // enable customization for gateway charges
+    $params = apply_filters( 'gf_chip_purchases_api_parameters', $params, array($feed, $submission_data, $form, $entry) );
 
     $this->log_debug( __METHOD__ . "(): Params keys " . print_r( $params, true ) );
 
@@ -697,31 +628,6 @@ class GF_Chip extends GFPaymentAddOn {
     }
 
     return 'UTC';
-  }
-
-  private function get_card_charges($chip_payment, $charges) {
-    $card_type = $chip_payment['transaction_data']['extra']['card_type']; // credit/debit
-
-    $fix_setting = $charges[$card_type . '_fixed'];
-    $per_setting = $charges[$card_type . '_percentage'];
-    $low_setting = $charges[$card_type . '_lowest'];
-
-    $chip_qty = $chip_payment['purchase']['products'][0]['quantity'];
-    $chip_price = $chip_payment['purchase']['products'][0]['price'];
-
-    $chip_total = $chip_qty * $chip_price;
-
-    $total = 0;
-    $total = $total + ($chip_total * ($per_setting / 100 / 100));
-    $total = $total + $fix_setting;
-
-    if (!empty(round($low_setting))) {
-      if (round($low_setting) > round($total)) {
-        $total = $low_setting;
-      }
-    }
-
-    return $chip_total + $total;
   }
 
   public function callback() {
