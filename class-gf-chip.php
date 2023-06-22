@@ -55,20 +55,20 @@ class GF_Chip extends GFPaymentAddOn {
   }
 
   public function get_post_payment_actions_config( $feed_slug ) {
-    if ($feed_slug != $this->_slug) {
-      return array();
-    }
+    // if ($feed_slug != $this->_slug) {
+    //   return array();
+    // }
 
-    $form = $this->get_current_form();
+    // $form = $this->get_current_form();
 
-    if ( GFCommon::has_post_field( $form['fields'] ) ) {
+    // if ( GFCommon::has_post_field( $form['fields'] ) ) {
       return array(
         'position' => 'before',
         'setting'  => 'conditionalLogic',
       );
-    }
+    // }
 
-    return array();
+    // return array();
   }
 
   public function supported_currencies( $currencies ) {
