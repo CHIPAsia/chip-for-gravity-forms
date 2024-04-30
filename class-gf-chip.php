@@ -499,7 +499,7 @@ class GF_Chip extends GFPaymentAddOn {
       $due_timing   = rgar( $gf_global_settings, 'due_strict_timing', 60 );
       $send_receipt = rgar( $gf_global_settings, 'send_receipt', false );
     }
-    
+
     if ($configuration_type == 'form'){
       $secret_key   = rgars( $feed, 'meta/secret_key' );
       $brand_id     = rgars( $feed, 'meta/brand_id' );
@@ -896,8 +896,9 @@ class GF_Chip extends GFPaymentAddOn {
     <div id="gf_refund_container">
       <div class="message" style="display:none;"></div>
     </div>
+    <br>
     <input id="refundpay" type="button" name="refundpay"
-           value="<?php esc_html_e( 'Refund', 'gravityformschip' ) ?>" class="button"
+           value="<?php esc_html_e( 'Refund', 'gravityformschip' ) ?>" class="button uninstall-addon red"
            onclick="RefundPayment();"
            onkeypress="RefundPayment();"
            <?php echo esc_attr( defined( 'GF_CHIP_DISABLE_REFUND_PAYMENT' ) ? 'disabled' : '' ) ?>/>

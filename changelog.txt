@@ -1,4 +1,18 @@
-*** Changelog ***
+== Changelog ==
 
-= 1.0.0 - 2022-10-20 =
+= 1.0.4 2023-06-22 =
+* Added - Support for Gravity Forms User Registration Add-On
+
+= 1.0.3 2023-02-22 =
+* Added - Hooks for customization of purchases parameter.
+
+= 1.0.2 2022-12-15 =
+* Added - Feature for setting reference value.
+
+= 1.0.1 2022-11-20 =
+* Add   - Note when payment is made using test mode.
+* Tweak - Change platform value to gravityforms.
+* Fix   - Refund still shown success even failed.
+
+= 1.0.0 2022-10-20 =
 * Initial release

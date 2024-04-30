@@ -2,8 +2,8 @@
 Contributors: chipasia, wanzulnet
 Tags: chip
 Requires at least: 4.7
-Tested up to: 6.2
-Stable tag: 1.0.4
+Tested up to: 6.5
+Stable tag: 1.0.5
 Requires PHP: 7.1
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -25,23 +25,10 @@ CHIP is a payment and business solutions platform that allow you to securely sel
 
 == Changelog ==
 
-= 1.0.4 - 2023-06-22 =
-* Added - Support for Gravity Forms User Registration Add-On
-
-= 1.0.3 - 2023-02-22 =
-* Added - Hooks for customization of purchases parameter.
-
-= 1.0.2 - 2022-12-15 =
-* Added - Feature for setting reference value.
-
-= 1.0.1 - 2022-11-20 =
-* Add - Note when payment is made using test mode.
-* Tweak - Change platform value to gravityforms.
-* Fix - Refund still shown success even failed.
-
-
-= 1.0.0 - 2022-10-20 =
-* New - Intial Release
+= 1.0.5 2024-04-30 =
+* Fixed   - Fixed warning when using PHP 8.x
+* Changed - Refund button now are colored with red
+* Changed - Bump WordPress tested up to version 6.5
 
 == Installation ==
 
@@ -76,7 +63,7 @@ No.
 
 = Where can I find documentation? =
 
-You can visit our [API documentation](https://developer.chip-in.asia/) for your reference.
+You can visit our [API documentation](https://docs.chip-in.asia/) for your reference.
 
 = What CHIP API services used in this plugin? =
 
@@ -114,6 +101,6 @@ define( 'GF_CHIP_DISABLE_REFUND_PAYMENT', true);
 
 [Privacy Policy](https://www.chip-in.asia/privacy-policy)
 
-[API Documentation](https://developer.chip-in.asia/)
+[API Documentation](https://docs.chip-in.asia/)
 
 [CHIP Merchants & DEV Community](https://www.facebook.com/groups/3210496372558088)
