@@ -4,12 +4,14 @@
  * License: GNU General Public License v3.0
  * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  */
-// This is CHIP API URL Endpoint as per documented in: https://developer.chip-in.asia/api
+// This is CHIP API URL Endpoint as per documented in: https://docs.chip-in.asia
 define("GF_CHIP_ROOT_URL", "https://gate.chip-in.asia");
 
 class GFChipAPI
 {
   private static $_instance;
+  private $secret_key;
+  private $brand_id;
 
   public static function get_instance($secret_key, $brand_id) {
     if ( self::$_instance == null ) {
