@@ -1,5 +1,10 @@
 == Changelog ==
 
+= 1.0.5 2024-04-30 =
+* Fixed   - Fixed warning when using PHP 8.x
+* Changed - Refund button now are colored with red
+* Changed - Bump WordPress tested up to version 6.5
+
 = 1.0.4 2023-06-22 =
 * Added - Support for Gravity Forms User Registration Add-On
 
