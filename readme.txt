@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip
 Requires at least: 4.7
 Tested up to: 6.5
-Stable tag: 1.0.5
+Stable tag: 1.0.6
 Requires PHP: 7.1
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -25,10 +25,8 @@ CHIP is a payment and business solutions platform that allow you to securely sel
 
 == Changelog ==
 
-= 1.0.5 2024-04-30 =
-* Fixed   - Fixed warning when using PHP 8.x
-* Changed - Refund button now are colored with red
-* Changed - Bump WordPress tested up to version 6.5
+= 1.0.6 2024-05-17 =
+* Added - Toggle button to enable refund feature
 
 == Installation ==
 

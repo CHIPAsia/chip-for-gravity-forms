@@ -148,12 +148,19 @@ class GF_Chip extends GFPaymentAddOn {
   public function global_advance_fields() {
     return array(
       array(
+        'name'          => 'enable_refund',
+        'label'         => 'Refund',
+        'type'          => 'toggle',
+        'default_value' => 'false',
+        'tooltip'       => '<h6>' . esc_html__( 'Refund features', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refund can be made through Gravity Forms --> Entries. Default is disabled.', 'gravityformschip' )
+      ),
+      array(
         'name'          => 'send_receipt',
         'label'         => 'Purchase Send Receipt',
         'type'          => 'toggle',
         'default_value' => 'false',
         'tooltip'       => '<h6>' . esc_html__( 'Purchase Send Receipt', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to send receipt email when it\'s paid. If configured, the receipt email will be send by CHIP. Default is not send.', 'gravityformschip' )
-        ),
+      ),
       array(
         'name'    => 'due_strict',
         'label'   => esc_html__( 'Due Strict', 'gravityformschip' ),
@@ -313,6 +320,12 @@ class GF_Chip extends GFPaymentAddOn {
       ),
       'description' => esc_html__('Further customize the behavior of the payment.', 'gravityformschip'),
       'fields'      => array(
+        array(
+          'name'    => 'enable_refund',
+          'label'   => esc_html__( 'Refund', 'gravityformschip' ),
+          'type'    => 'toggle',
+          'tooltip' => '<h6>' . esc_html__( 'Refund features', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refund can be made through Gravity Forms --> Entries. Default is disabled.', 'gravityformschip' )
+        ),
         array(
           'name'    => 'send_receipt',
           'label'   => esc_html__( 'Purchase Send Receipt', 'gravityformschip' ),
@@ -953,11 +966,18 @@ class GF_Chip extends GFPaymentAddOn {
     if ( $gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' ) ){
       $secret_key = rgar( $gf_global_settings, 'secret_key' );
       $brand_id   = rgar( $gf_global_settings, 'brand_id' );
+      $refund     = rgar( $gf_global_settings, 'enable_refund', false);
     }
 
     if ($configuration_type == 'form'){
       $secret_key = rgars( $feed, 'meta/secret_key' );
       $brand_id   = rgars( $feed, 'meta/brand_id' );
+      $refund     = rgars( $feed, 'meta/enable_refund', false);
+    }
+
+    if (!$refund == '1') {
+      esc_html_e( 'Refund feature has been disabled.', 'gravityformschip' );
+      die();
     }
 
     $chip       = GFChipAPI::get_instance( $secret_key, $brand_id );
