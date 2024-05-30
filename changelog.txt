@@ -1,5 +1,8 @@
 == Changelog ==
 
+= 1.0.6 2024-05-17 =
+* Added - Toggle button to enable refund feature
+
 = 1.0.5 2024-04-30 =
 * Fixed   - Fixed warning when using PHP 8.x
 * Changed - Refund button now are colored with red
