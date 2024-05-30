@@ -532,6 +532,7 @@ class GF_Chip extends GFPaymentAddOn {
       'success_callback' => $this->get_redirect_url( $redirect_url_args ),
       'success_redirect' => $this->get_redirect_url( $redirect_url_args ),
       'failure_redirect' => $this->get_redirect_url( $redirect_url_args ),
+      'cancel_redirect'  => $this->get_redirect_url( $redirect_url_args ),
       'creator_agent'    => 'Gravity Forms: '. GF_CHIP_MODULE_VERSION,
       'reference'        => empty( $reference ) ? $entry_id : substr( $reference, 0, 128 ),
       'platform'         => 'gravityforms',
