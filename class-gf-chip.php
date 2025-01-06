@@ -44,31 +44,14 @@ class GF_Chip extends GFPaymentAddOn {
   }
 
   public function init() {
-    add_filter( 'gform_disable_post_creation', array( $this, 'disable_post_creation' ), 10, 3 );
-
-    $this->add_delayed_payment_support(
-      array(
-        'option_label' => esc_html__( 'Create post only when payment is received.', 'gravityformschip' )
-      )
-    );
     parent::init();
   }
 
   public function get_post_payment_actions_config( $feed_slug ) {
-    // if ($feed_slug != $this->_slug) {
-    //   return array();
-    // }
-
-    // $form = $this->get_current_form();
-
-    // if ( GFCommon::has_post_field( $form['fields'] ) ) {
       return array(
         'position' => 'before',
         'setting'  => 'conditionalLogic',
       );
-    // }
-
-    // return array();
   }
 
   public function supported_currencies( $currencies ) {
@@ -355,7 +338,7 @@ class GF_Chip extends GFPaymentAddOn {
     $feed_settings_fields[] = $product_and_services;
     $feed_settings_fields[] = $other_settings;
 
-    return apply_filters( 'gf_chip_feed_settings_fields', $feed_settings_fields );
+    return apply_filters( 'gf_chip_feed_settings_fields', array_values( $feed_settings_fields ) );
   }
 
   public function other_settings_fields() {
@@ -403,7 +386,7 @@ class GF_Chip extends GFPaymentAddOn {
 
     $other_settings_fields[] = $conditional_logic;
 
-    return $other_settings_fields;
+    return array_values($other_settings_fields);
   }
 
   // This method must return empty array to prevent option from showing in feeds settings
@@ -829,47 +812,6 @@ class GF_Chip extends GFPaymentAddOn {
     );
   }
 
-  // default $is_disabled = false
-  public function disable_post_creation( $is_disabled, $form, $entry ) {
-    $submission_feed = $this->get_payment_feed( $entry, $form );
-    $submission_data = $this->get_submission_data( $submission_feed, $form, $entry );
-
-    if ( !$this->is_payment_gateway( $entry['id'] ) ) {
-      return $is_disabled;
-    }
-
-    if ( !GFCommon::has_post_field($form['fields'] ) ) {
-      return $is_disabled;
-    }
-
-    if (! $submission_feed || empty( $submission_data['payment_amount'] ) ) {
-      return $is_disabled;
-    }
-
-    return rgar( $submission_feed['meta'], "delay_{$this->_slug}" ) == '1' ? true : $is_disabled;
-  }
-
-  // $action value is function callback() return value
-  public function create_post_now( $entry, $action ) {
-    $form_id         = $entry['form_id'];
-    $form            = GFAPI::get_form( $form_id );
-    $submission_feed = $this->get_payment_feed( $entry, $form );
-
-    if ( !$this->is_payment_gateway( $entry['id'] ) ) {
-      return;
-    }
-
-    if ( !GFCommon::has_post_field( $form['fields'] ) ) {
-      return;
-    }
-
-    if ( rgars( $submission_feed, 'meta/delay_post_creation' ) == '1' ) {
-      $this->log_debug( __METHOD__ . '(): Creating delayed post for entry id: #' . $entry['id'] );
-      $post_id = RGFormsModel::create_post( $form, $entry );
-      $this->log_debug( __METHOD__ . '(): Post #' . $post_id . ' created for entry id: #' . $entry['id'] );
-    }
-  }
-
   public function complete_payment( &$entry, $action ) {
     parent::complete_payment( $entry, $action );
 
@@ -877,20 +819,9 @@ class GF_Chip extends GFPaymentAddOn {
     $form           = GFAPI::get_form( $entry['form_id'] );
     $feed           = $this->get_payment_feed( $entry, $form );
 
-    // this is a hack to allow processing of delayed task
-    if( rgar( $feed['meta'], "delay_{$this->_slug}" ) == '1' ){
-      gform_update_meta( $entry['id'], "{$this->_slug}_is_fulfilled", false );
-    }
-
     $this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
 
     return true;
-  }
-
-  public function process_feed( $feed, $entry, $form ) {
-    if ( $this->_bypass_feed_delay ) {
-      RGFormsModel::create_post( $form, $entry );
-    }
   }
 
   // Refund button
