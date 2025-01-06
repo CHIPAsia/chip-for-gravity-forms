@@ -1,10 +1,10 @@
 === CHIP for Gravity Forms ===
 Contributors: chipasia, wanzulnet
 Tags: chip
-Requires at least: 4.7
-Tested up to: 6.5
-Stable tag: 1.0.7
-Requires PHP: 7.1
+Requires at least: 6.0
+Tested up to: 6.7
+Stable tag: 1.1.0
+Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
@@ -25,14 +25,14 @@ CHIP is a payment and business solutions platform that allow you to securely sel
 
 == Changelog ==
 
-= 1.0.7 2024-05-30 =
-* Added - Add cancel_redirect for handling cancel event
+= 1.1.0 2025-01-06 =
+* Fixed - Fix issue with Delay Post
 
 == Installation ==
 
 = Minimum Requirements =
 
-* WordPress 5.9 or greater
+* WordPress 6.0 or greater
 
 = Automatic installation =
 
@@ -79,10 +79,6 @@ Set the tag {entry:transaction_id} at the event Payment Completion notification.
 = Does refund initiated through WordPress Dashboard instant? =
 
 Refund made through WordPress Dashboard is still subject to CHIP refund policy. Having refund successful message in dashboard only indicates that CHIP API has been called for the refund process.
-
-= Why post creation is not delayed after installing Gravity Forms Advanced Post Creation plugin? =
-
-This plugin is not compatible to use together with [Gravity Forms Advanced Post Creation plugin](https://www.gravityforms.com/add-ons/advanced-post-creation/).
 
 = How to disable refund feature? =
 
