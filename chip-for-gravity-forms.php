@@ -2,7 +2,7 @@
 
 /**
  * Plugin Name: CHIP for Gravity Forms
- * Plugin URI: https://wordpress.org/plugins/chip-for-woocommerce/
+ * Plugin URI: https://wordpress.org/plugins/chip-for-gravity-forms/
  * Description: CHIP - Better Payment & Business Solutions
  * Version: 1.1.0
  * Author: Chip In Sdn Bhd
