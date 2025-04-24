@@ -1,5 +1,11 @@
 == Changelog ==
 
+= 1.1.1 2025-04-24 =
+* Fixed - Fix issue with Paid Amount when amount greater than 1,000.
+
+= 1.1.0 2025-01-06 =
+* Fixed - Fix issue with Delay Post
+
 = 1.0.7 2024-05-30 =
 * Added - Add cancel_redirect for handling cancel event
 

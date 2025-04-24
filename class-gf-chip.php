@@ -683,7 +683,7 @@ class GF_Chip extends GFPaymentAddOn {
 			'transaction_id' => $payment_id,
 			'entry_id' => $entry_id,
 			'payment_method' => $payment_method,
-			'amount' => number_format( $chip_payment['purchase']['total'] / 100, 2 ),
+			'amount' => sprintf( '%.2f', $chip_payment['purchase']['total'] / 100 ),
 		);
 
 		// Acquire lock to prevent concurrency
