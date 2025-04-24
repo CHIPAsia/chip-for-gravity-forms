@@ -1,7 +1,6 @@
 *.md export-ignore
 .gitignore export-ignore
 .gitattributes export-ignore
-/assets/logo.svg export-ignore
 /.github        export-ignore
 /tests          export-ignore
 /phpunit.xml    export-ignore
