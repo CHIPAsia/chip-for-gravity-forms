@@ -46,7 +46,7 @@ jobs:
         curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
         chmod +x wp-cli.phar
         sudo mv wp-cli.phar /usr/local/bin/wp
-        # wp config create --dbname=wordpress_test --dbuser=wordpress --dbpass=wordpress --dbhost=127.0.0.1 --path=/tmp/wordpress
+        wp config create --force --dbname=wordpress_test --dbuser=wordpress --dbpass=wordpress --dbhost=127.0.0.1 --path=/tmp/wordpress
         wp core install --url=http://localhost --title=test --admin_user=wzul --admin_email=wzul@test.com --path=/tmp/wordpress
     - name: Copy plugin to WordPress
       run: |
