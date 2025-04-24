@@ -51,7 +51,7 @@ jobs:
     - name: Copy plugin to WordPress
       run: |
         mkdir -p /tmp/wordpress/wp-content/plugins/chip-for-gravity-forms
-        cp -R . /tmp/wordpress/wp-content/plugins/chip-for-gravity-forms/
+        rsync -av --exclude='.git' . /tmp/wordpress/wp-content/plugins/chip-for-gravity-forms/
     
     - name: Test plugin activation
       run: |
