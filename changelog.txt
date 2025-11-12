@@ -1,5 +1,8 @@
 == Changelog ==
 
+= 1.1.2 2025-11-12 =
+* Fixed - Fix issue when the failed payment are re-attempted.
+
 = 1.1.1 2025-04-24 =
 * Fixed - Fix issue with Paid Amount when amount greater than 1,000.
 

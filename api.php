@@ -43,6 +43,11 @@ class GFChipAPI {
 		return $result;
 	}
 
+	public function cancel_payment( $payment_id ) {
+		$result = $this->call( 'POST', "/purchases/{$payment_id}/cancel/");
+		return $result;
+	}
+
 	public function was_payment_successful( $payment_id ) {
 		$result = $this->get_payment( $payment_id );
 		return $result && $result['status'] == 'paid';
