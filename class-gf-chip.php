@@ -21,8 +21,9 @@ class GF_Chip extends GFPaymentAddOn {
 
 	public function __construct() {
 		parent::__construct();
+		// TODO: store public key to option
 		// based on: update_option( 'gravityformsaddon_' . $this->_slug . '_settings', $settings );
-		add_action( 'update_option_gravityformsaddon_gravityformschip_settings', array( $this, 'global_validate_keys' ), 10, 3 );
+		// add_action( 'update_option_gravityformsaddon_gravityformschip_settings', array( $this, 'global_validate_keys' ), 10, 3 );
 	}
 
 	public static function get_instance() {
@@ -44,6 +45,7 @@ class GF_Chip extends GFPaymentAddOn {
 
 	public function init() {
 		parent::init();
+		add_action( 'gform_post_payment_callback', array( $this, 'handle_post_payment_callback' ), 10, 3 );
 	}
 
 	public function get_post_payment_actions_config( $feed_slug ) {
@@ -672,8 +674,19 @@ class GF_Chip extends GFPaymentAddOn {
 		$transaction_data = rgar( $chip_payment, 'transaction_data' );
 		$payment_method = rgar( $transaction_data, 'payment_method' );
 
-		$type = 'fail_payment';
-		if ( $chip_payment['status'] == 'paid' ) {
+		$status = $chip_payment['status'];
+
+		// For status other than 'paid' and 'error', immediately return empty string to bypass callback
+		if ( $status != 'paid' && $status != 'error' ) {
+			$this->log_debug( __METHOD__ . "(): Status '$status' is not 'paid' or 'error', returning empty string to bypass callback" );
+			return '';
+		}
+
+		// If status is 'error', set type to 'fail_payment'
+		if ( $status == 'error' ) {
+			$type = 'fail_payment';
+		} elseif ( $status == 'paid' ) {
+			// If status is 'paid', retain the flow
 			$type = 'complete_payment';
 		}
 
@@ -739,6 +752,45 @@ class GF_Chip extends GFPaymentAddOn {
 		// Redirect user automatically
 		echo '<script>window.location.replace(\'' . esc_url_raw( $url ) . '\')</script>';
 		$this->log_debug( 'End of ' . __METHOD__ . "(): for entry id: #" . $callback_action['entry_id'] );
+	}
+
+	public function handle_post_payment_callback( $entry, $callback_action, $result ) {
+		// Only cancel payment if it's a failed payment to prevent retry
+		if ( rgar( $callback_action, 'type' ) != 'fail_payment' ) {
+			return;
+		}
+
+		$entry_id = rgar( $entry, 'id' );
+		$payment_id = rgar( $callback_action, 'transaction_id' );
+
+		if ( empty( $payment_id ) ) {
+			$this->log_debug( __METHOD__ . "(): No payment ID found for entry #$entry_id, skipping cancel" );
+			return;
+		}
+
+		$this->log_debug( __METHOD__ . "(): Attempting to cancel payment #$payment_id for entry #$entry_id" );
+
+		$submission_feed = $this->get_payment_feed( $entry );
+		$configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global' );
+
+		if ( $gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' ) ) {
+			$secret_key = rgar( $gf_global_settings, 'secret_key' );
+			$brand_id = rgar( $gf_global_settings, 'brand_id' );
+		}
+
+		if ( $configuration_type == 'form' ) {
+			$secret_key = rgars( $submission_feed, 'meta/secret_key' );
+			$brand_id = rgars( $submission_feed, 'meta/brand_id' );
+		}
+
+		$chip = GFChipAPI::get_instance( $secret_key, $brand_id );
+		$cancel_result = $chip->cancel_payment( $payment_id );
+
+		if ( $cancel_result && rgar( $cancel_result, 'id' ) ) {
+			$this->log_debug( __METHOD__ . "(): Successfully cancelled payment #$payment_id for entry #$entry_id" );
+		} else {
+			$this->log_debug( __METHOD__ . "(): Failed to cancel payment #$payment_id for entry #$entry_id. Result: " . print_r( $cancel_result, true ) );
+		}
 	}
 
 	// This method inspired by gravityformsstripe plugin
