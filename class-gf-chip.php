@@ -676,17 +676,8 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$status = $chip_payment['status'];
 
-		// For status other than 'paid' and 'error', immediately return empty string to bypass callback
-		if ( $status != 'paid' && $status != 'error' ) {
-			$this->log_debug( __METHOD__ . "(): Status '$status' is not 'paid' or 'error', returning empty string to bypass callback" );
-			return '';
-		}
-
-		// If status is 'error', set type to 'fail_payment'
-		if ( $status == 'error' ) {
-			$type = 'fail_payment';
-		} elseif ( $status == 'paid' ) {
-			// If status is 'paid', retain the flow
+		$type = 'fail_payment';
+		if ( $chip_payment['status'] == 'paid' ) {
 			$type = 'complete_payment';
 		}
 
@@ -698,6 +689,12 @@ class GF_Chip extends GFPaymentAddOn {
 			'payment_method' => $payment_method,
 			'amount' => sprintf( '%.2f', $chip_payment['purchase']['total'] / 100 ),
 		);
+
+		// For status other than 'paid' and 'error', add abort_callback to bypass callback
+		if ( $status != 'paid' && $status != 'error' ) {
+			$this->log_debug( __METHOD__ . "(): Status '$status' is not 'paid' or 'error', adding abort_callback to bypass callback" );
+			$action['abort_callback'] = 'true';
+		}
 
 		// Acquire lock to prevent concurrency
 		$GLOBALS['wpdb']->get_results(
