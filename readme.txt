@@ -8,18 +8,18 @@ Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
-CHIP - Better Payment & Business Solutions. Securely accept payment with CHIP for Gravity Forms.
+CHIP - Digital Finance Platform. Securely accept payment with CHIP for Gravity Forms.
 
 == Description ==
 
 This is a CHIP plugin for Gravity Forms.
 
-CHIP is a payment and business solutions platform that allow you to securely sell your products and get paid via multiple local and international payment methods.
+CHIP is a payment and business solutions platform that allows you to securely sell your products and get paid via multiple local and international payment methods.
 
 == Screenshots ==
-* Fill up the form with Brand ID and Secret Key on Global Configuration.
-* Fill up the form with Brand ID and Secret Key on Form-specific Configuration.
-* Form that have been integrated with CHIP.
+* Fill in the form with Brand ID and Secret Key on Global Configuration.
+* Fill in the form with Brand ID and Secret Key on Form-specific Configuration.
+* Form that has been integrated with CHIP.
 * Test mode payment page.
 * Confirmation page after successful payment.
 
@@ -36,9 +36,9 @@ CHIP is a payment and business solutions platform that allow you to securely sel
 
 = Automatic installation =
 
-Automatic installation is the easiest option as WordPress handles the file transfers itself and you don’t need to leave your web browser. To do an automatic install of, log in to your WordPress dashboard, navigate to the Plugins menu and click Add New.
+Automatic installation is the easiest option as WordPress handles the file transfers itself and you don’t need to leave your web browser. To do an automatic install, log in to your WordPress dashboard, navigate to the Plugins menu and click Add New.
 
-In the search field type "CHIP for Gravity Forms" and click Search Plugins. Once you’ve found our plugin you can view details about it such as the point release, rating and description. Most importantly of course, you can install it by simply clicking “Install Now”.
+In the search field, type "CHIP for Gravity Forms" and click Search Plugins. Once you’ve found our plugin you can view details about it such as the point release, rating and description. Most importantly of course, you can install it by simply clicking “Install Now”.
 
 = Manual installation =
 
@@ -53,9 +53,9 @@ Automatic updates should work like a charm; as always though, ensure you backup 
 
 = Where is the Brand ID and Secret Key located? =
 
-Brand ID and Secret Key available through our merchant dashboard.
+Brand ID and Secret Key are available through our merchant dashboard.
 
-= Do I need to set public key for webhook? =
+= Do I need to set a public key for webhook? =
 
 No.
 
@@ -63,22 +63,22 @@ No.
 
 You can visit our [API documentation](https://docs.chip-in.asia/) for your reference.
 
-= What CHIP API services used in this plugin? =
+= What CHIP API services are used in this plugin? =
 
-This plugin rely on CHIP API ([GF_CHIP_ROOT_URL](https://gate.chip-in.asia)) as follows:
+This plugin relies on CHIP API ([GF_CHIP_ROOT_URL](https://gate.chip-in.asia)) as follows:
 
   - **/purchases/**
     - This is for accepting payment
   - **/purchases/<id\>**
     - This is for getting payment status from CHIP
 
-= How to include Purchases ID on notification? =
+= How to include Purchase ID on notification? =
 
 Set the tag {entry:transaction_id} at the event Payment Completion notification. You may refer to [GravityForms Merge Tag](https://docs.gravityforms.com/merge-tags/#entry-data) for more information.
 
-= Does refund initiated through WordPress Dashboard instant? =
+= Is a refund initiated through the WordPress Dashboard instant? =
 
-Refund made through WordPress Dashboard is still subject to CHIP refund policy. Having refund successful message in dashboard only indicates that CHIP API has been called for the refund process.
+A refund made through the WordPress Dashboard is still subject to CHIP refund policy. Having refund successful message in dashboard only indicates that CHIP API has been called for the refund process.
 
 = How to disable refund feature? =
 
