@@ -94,9 +94,9 @@ class GF_Chip extends GFPaymentAddOn {
 		<p>
 			<?php
 			printf(
-				// translators: $1$s opens a link tag, %2$s closes link tag.
+				// translators: %1$s opens link tag, %2$s closes link tag, %3$s is line break.
 				esc_html__(
-					'CHIP - Digital Finance Platform. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration and it is not mandatory to set. You can still configure on per form basis.',
+					'CHIP — Digital Finance Platform. %1$sLearn more%2$s. %3$s%3$sGlobal settings are optional. You may configure CHIP per form in each form\'s CHIP feed settings instead.',
 					'gravityformschip'
 				),
 				'<a href="https://www.chip-in.asia/" target="_blank">',
@@ -200,6 +200,51 @@ class GF_Chip extends GFPaymentAddOn {
 		</p>
 		<?php
 		return ob_get_clean();
+	}
+
+	/**
+	 * Returns Account Status HTML for form feed settings (Brand ID and Secret Key from feed or current form context).
+	 *
+	 * @return string
+	 */
+	public function get_form_feed_account_status_description() {
+		$brand_id   = $this->get_setting( 'brand_id', '' );
+		$secret_key = $this->get_setting( 'secret_key', '' );
+		return $this->get_account_status_html_for_credentials( $brand_id, $secret_key );
+	}
+
+	/**
+	 * Returns Account Status HTML for given Brand ID and Secret Key (validates and shows Success / Not set / error).
+	 *
+	 * @param string $brand_id   Brand ID.
+	 * @param string $secret_key Secret Key.
+	 * @return string
+	 */
+	public function get_account_status_html_for_credentials( $brand_id = '', $secret_key = '' ) {
+		$brand_id   = trim( (string) $brand_id );
+		$secret_key = trim( (string) $secret_key );
+		$state      = 'Not set';
+
+		if ( $brand_id !== '' && $secret_key !== '' ) {
+			$chip       = GFChipAPI::get_instance( $secret_key, $brand_id );
+			$public_key = $chip->get_public_key();
+			if ( is_string( $public_key ) ) {
+				$state = 'Success';
+			} elseif ( is_array( $public_key ) && ! empty( $public_key['__all__'] ) && is_array( $public_key['__all__'] ) ) {
+				$state = implode( ', ', array_column( $public_key['__all__'], 'code' ) );
+			} else {
+				$state = __( 'unspecified error!', 'gravityformschip' );
+			}
+		}
+
+		$display_state = ( $state === 'Success' ) ? '✓ ' . $state : esc_html( $state );
+
+		return '<p>' . sprintf(
+			esc_html__( 'CHIP API connection: %1$s%3$s%2$s.', 'gravityformschip' ),
+			'<strong>',
+			'</strong>',
+			$display_state
+		) . '</p>';
 	}
 
 	/**
@@ -328,6 +373,23 @@ class GF_Chip extends GFPaymentAddOn {
 					'tooltip' => '<h6>' . esc_html__( 'Secret Key', 'gravityformschip' ) . '</h6>' . esc_html__( 'Secret key is used to identify your account with CHIP. You are recommended to create dedicated secret key for each website.', 'gravityformschip' )
 				),
 			)
+		);
+
+		$feed_settings_fields[] = array(
+			'title'       => esc_html__( 'Account Status', 'gravityformschip' ),
+			'dependency' => array(
+				'field'  => 'chipConfigurationType',
+				'values' => array( 'form' ),
+			),
+			'description' => $this->get_form_feed_account_status_description(),
+			'fields'      => array(
+				// Placeholder so GF renders the section (description above shows the status).
+				array(
+					'name'  => '_gf_chip_account_status_placeholder',
+					'type'  => 'hidden',
+					'label' => '',
+				),
+			),
 		);
 
 		$feed_settings_fields[] = array(
