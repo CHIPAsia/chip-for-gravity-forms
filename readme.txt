@@ -2,8 +2,8 @@
 Contributors: chipasia, wanzulnet
 Tags: chip
 Requires at least: 6.0
-Tested up to: 6.8
-Stable tag: 1.1.2
+Tested up to: 6.9
+Stable tag: 1.2.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -25,8 +25,8 @@ CHIP is a payment and business solutions platform that allow you to securely sel
 
 == Changelog ==
 
-= 1.1.2 2025-11-12 =
-* Fixed - Fix issue when the failed payment are re-attempted.
+= 1.2.0 2026-02-20 =
+* Fixed - Fix issue when setting keys in Global Configuration.
 
 == Installation ==
 

@@ -1,5 +1,8 @@
 == Changelog ==
 
+= 1.2.0 2026-02-20 =
+* Fixed - Fix issue when setting keys in Global Configuration.
+
 = 1.1.2 2025-11-12 =
 * Fixed - Fix issue when the failed payment are re-attempted.
 
