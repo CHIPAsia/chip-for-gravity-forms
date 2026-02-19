@@ -7,6 +7,7 @@ GFForms::include_payment_addon_framework();
 class GF_Chip extends GFPaymentAddOn {
 
 	private static $_instance = null;
+	protected $_full_path = __FILE__;
 	protected $_slug = 'gravityformschip';
 	protected $_title = 'CHIP for Gravity Forms';
 
