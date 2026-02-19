@@ -69,9 +69,10 @@ class GF_Chip extends GFPaymentAddOn {
 				'fields' => $this->global_keys_fields(),
 			),
 			array(
-				'title' => esc_html__( 'Account Status', 'gravityformschip' ),
+				'id'          => 'gf_chip_account_status',
+				'title'       => esc_html__( 'Account Status', 'gravityformschip' ),
 				'description' => $this->global_account_status_description(),
-				'fields' => array( [ 'type' => 'account_status' ] )
+				'fields'      => array( array( 'type' => 'account_status' ) ),
 			),
 		);
 
@@ -87,13 +88,15 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	public function get_description() {
+		$img_url = plugins_url( 'assets/form-settings.png', __FILE__ );
+		$img_alt = esc_attr__( 'Configuration Type dropdown showing Global Configuration and Form Configuration options.', 'gravityformschip' );
 		ob_start(); ?>
 		<p>
 			<?php
 			printf(
 				// translators: $1$s opens a link tag, %2$s closes link tag.
 				esc_html__(
-					'CHIP - Better Payment & Business Solutions. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration and it is not mandatory to set. You can still configure on per form basis.',
+					'CHIP - Digital Finance Platform. %1$sLearn more%2$s. %3$s%3$sThis is a global configuration and it is not mandatory to set. You can still configure on per form basis.',
 					'gravityformschip'
 				),
 				'<a href="https://www.chip-in.asia/" target="_blank">',
@@ -102,6 +105,12 @@ class GF_Chip extends GFPaymentAddOn {
 			);
 			?>
 		</p>
+		<figure style="margin: 1em 0;">
+			<img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo $img_alt; ?>" style="max-width: 100%; height: auto;" />
+			<figcaption style="margin-top: 0.5em; font-style: italic; color: #50575e;">
+				<?php esc_html_e( 'To use this global configuration on a form, choose "Global Configuration" in the form\'s CHIP feed settings.', 'gravityformschip' ); ?>
+			</figcaption>
+		</figure>
 		<?php
 
 		return ob_get_clean();
@@ -137,13 +146,6 @@ class GF_Chip extends GFPaymentAddOn {
 				'tooltip' => '<h6>' . esc_html__( 'Refund features', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refund can be made through Gravity Forms --> Entries. Default is disabled.', 'gravityformschip' )
 			),
 			array(
-				'name' => 'send_receipt',
-				'label' => 'Purchase Send Receipt',
-				'type' => 'toggle',
-				'default_value' => 'false',
-				'tooltip' => '<h6>' . esc_html__( 'Purchase Send Receipt', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to send receipt email when it\'s paid. If configured, the receipt email will be send by CHIP. Default is not send.', 'gravityformschip' )
-			),
-			array(
 				'name' => 'due_strict',
 				'label' => esc_html__( 'Due Strict', 'gravityformschip' ),
 				'type' => 'toggle',
@@ -160,33 +162,43 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	public function global_account_status_description() {
+		return '<div id="gf-chip-account-status-block">' . $this->get_account_status_html() . '</div>';
+	}
+
+	/**
+	 * Returns the inner HTML for the Account Status block (used for initial render and AJAX refresh).
+	 *
+	 * @return string
+	 */
+	public function get_account_status_html() {
 		$state = 'Not set';
 
 		if ( get_option( 'gf_chip_global_key_validation' ) ) {
 			$state = 'Success';
-		} else if ( ! empty( get_option( 'gf_chip_global_error_code' ) ) ) {
+		} elseif ( ! empty( get_option( 'gf_chip_global_error_code' ) ) ) {
 			$state = get_option( 'gf_chip_global_error_code' );
 		}
 
-		ob_start(); ?>
+		$display_state = ( $state === 'Success' ) ? '✓ ' . $state : $state;
+		$display_state = esc_html( $display_state );
+
+		ob_start();
+		?>
 		<p>
 			<?php
 			printf(
-				// translators: $1$s opens a link tag, %2$s closes link tag.
+				// translators: %1$s and %2$s are strong tags, %3$s is the status (e.g. ✓ Success, Not set, or an error code).
 				esc_html__(
-					'Your %1$sCHIP%2$s Brand ID and Secret Key settings: %3$s%5$s%4$s.',
+					'CHIP API connection: %1$s%3$s%2$s.',
 					'gravityformschip'
 				),
-				'<a href="https://gate.chip-in.asia/" target="_blank">',
-				'</a>',
 				'<strong>',
 				'</strong>',
-				$state
+				$display_state
 			);
 			?>
 		</p>
 		<?php
-
 		return ob_get_clean();
 	}
 
@@ -199,6 +211,13 @@ class GF_Chip extends GFPaymentAddOn {
 	public function update_plugin_settings( $settings ) {
 		$this->validate_and_update_account_status( $settings );
 		parent::update_plugin_settings( $settings );
+		// Sections were built before save; rebuild them so the response has updated Account Status and Optional Configuration (when validation passed).
+		$renderer = $this->get_settings_renderer();
+		if ( $renderer && method_exists( $renderer, 'set_fields' ) ) {
+			$sections = $this->plugin_settings_fields();
+			$sections = $this->prepare_settings_sections( $sections, 'plugin_settings' );
+			$renderer->set_fields( $sections );
+		}
 	}
 
 	/**
@@ -324,12 +343,6 @@ class GF_Chip extends GFPaymentAddOn {
 					'label' => esc_html__( 'Refund', 'gravityformschip' ),
 					'type' => 'toggle',
 					'tooltip' => '<h6>' . esc_html__( 'Refund features', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refund can be made through Gravity Forms --> Entries. Default is disabled.', 'gravityformschip' )
-				),
-				array(
-					'name' => 'send_receipt',
-					'label' => esc_html__( 'Purchase Send Receipt', 'gravityformschip' ),
-					'type' => 'toggle',
-					'tooltip' => '<h6>' . esc_html__( 'Purchase Send Receipt', 'gravityformschip' ) . '</h6>' . esc_html__( 'Whether to send receipt email for this Purchase when it\'s paid.', 'gravityformschip' )
 				),
 				array(
 					'name' => 'due_strict',
@@ -509,7 +522,6 @@ class GF_Chip extends GFPaymentAddOn {
 			$brand_id = rgar( $gf_global_settings, 'brand_id' );
 			$due_strict = rgar( $gf_global_settings, 'due_strict' );
 			$due_timing = rgar( $gf_global_settings, 'due_strict_timing', 60 );
-			$send_receipt = rgar( $gf_global_settings, 'send_receipt', false );
 		}
 
 		if ( $configuration_type == 'form' ) {
@@ -517,7 +529,6 @@ class GF_Chip extends GFPaymentAddOn {
 			$brand_id = rgars( $feed, 'meta/brand_id' );
 			$due_strict = rgars( $feed, 'meta/due_strict' );
 			$due_timing = rgars( $feed, 'meta/due_strict_timing', 60 );
-			$send_receipt = rgars( $feed, 'meta/send_receipt', false );
 		}
 
 		$chip = GFChipAPI::get_instance( $secret_key, $brand_id );
@@ -535,7 +546,7 @@ class GF_Chip extends GFPaymentAddOn {
 			'creator_agent' => 'Gravity Forms: ' . GF_CHIP_MODULE_VERSION,
 			'reference' => empty( $reference ) ? $entry_id : substr( $reference, 0, 128 ),
 			'platform' => 'gravityforms',
-			'send_receipt' => $send_receipt == '1',
+			'send_receipt' => false,
 			'due' => time() + ( absint( $due_timing ) * 60 ),
 			'brand_id' => $brand_id,
 			'client' => array(
