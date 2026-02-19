@@ -37,6 +37,7 @@ class GF_Chip extends GFPaymentAddOn {
 		// inspired by gravityformsstripe
 		add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
 		add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
+		add_action( 'wp_ajax_gf_chip_get_global_credentials', array( $this, 'ajax_get_global_credentials' ), 10, 0 );
 
 		parent::pre_init();
 	}
@@ -59,6 +60,29 @@ class GF_Chip extends GFPaymentAddOn {
 
 	public function get_menu_icon() {
 		return plugins_url( "assets/logo.svg", __FILE__ );
+	}
+
+	public function scripts() {
+		$scripts = array(
+			array(
+				'handle'  => 'gf_chip_feed_settings_copy_global',
+				'src'     => $this->get_base_url() . '/assets/js/feed-settings-copy-global.js',
+				'version' => defined( 'GF_CHIP_MODULE_VERSION' ) ? GF_CHIP_MODULE_VERSION : null,
+				'deps'    => array( 'jquery' ),
+				'enqueue' => array(
+					array(
+						'admin_page' => array( 'form_settings' ),
+						'tab'        => $this->_slug,
+					),
+				),
+				'strings' => array(
+					'nonce'  => wp_create_nonce( 'gf_chip_get_global_credentials' ),
+					'action' => 'gf_chip_get_global_credentials',
+					'error'  => __( 'Request failed.', 'gravityformschip' ),
+				),
+			),
+		);
+		return array_merge( parent::scripts(), $scripts );
 	}
 
 	public function plugin_settings_fields() {
@@ -348,13 +372,17 @@ class GF_Chip extends GFPaymentAddOn {
 			'tooltip' => '<h6>' . esc_html__( 'Configuration Type', 'gravityformschip' ) . '</h6>' . esc_html__( 'Select a configuration type. If you want to configure CHIP on form basis, you may use Form Configuration. If you want to use globally set keys, choose Global Configuration.', 'gravityformschip' )
 		);
 
+		$copy_btn = sprintf(
+			'<p class="gf-chip-copy-global-wrap" style="margin: 0.75em 0 0.5em 0;"><button type="button" class="button gf-chip-copy-global-config" id="gf-chip-copy-global-config">%s</button></p>',
+			esc_html__( 'Copy from global configuration', 'gravityformschip' )
+		);
 		$feed_settings_fields[] = array(
 			'title' => esc_html__( 'CHIP Form Configuration Settings', 'gravityformschip' ),
 			'dependency' => array(
 				'field' => 'chipConfigurationType',
 				'values' => array( 'form' )
 			),
-			'description' => esc_html__( 'Set your Brand ID and Secret Key for the use of CHIP with this forms', 'gravityformschip' ),
+			'description' => '<p>' . esc_html__( 'Set your Brand ID and Secret Key for the use of CHIP with this forms', 'gravityformschip' ) . '</p>' . $copy_btn,
 			'fields' => array(
 				array(
 					'name' => 'brand_id',
@@ -1008,6 +1036,29 @@ class GF_Chip extends GFPaymentAddOn {
 		</script>
 
 		<?php
+	}
+
+	/**
+	 * AJAX: Returns global Brand ID and Secret Key for the "Copy from global configuration" button on feed settings.
+	 */
+	public function ajax_get_global_credentials() {
+		check_ajax_referer( 'gf_chip_get_global_credentials', 'nonce' );
+
+		if ( ! $this->current_user_can_any( $this->_capabilities_form_settings ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'gravityformschip' ) ) );
+		}
+
+		$brand_id   = $this->get_plugin_setting( 'brand_id' );
+		$secret_key = $this->get_plugin_setting( 'secret_key' );
+
+		if ( empty( $brand_id ) && empty( $secret_key ) ) {
+			wp_send_json_error( array( 'message' => __( 'Global configuration is not set.', 'gravityformschip' ) ) );
+		}
+
+		wp_send_json_success( array(
+			'brand_id'   => is_string( $brand_id ) ? $brand_id : '',
+			'secret_key' => is_string( $secret_key ) ? $secret_key : '',
+		) );
 	}
 
 	public function chip_refund_payment() {
