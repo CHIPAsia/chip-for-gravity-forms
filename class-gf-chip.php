@@ -22,9 +22,6 @@ class GF_Chip extends GFPaymentAddOn {
 
 	public function __construct() {
 		parent::__construct();
-		// TODO: store public key to option
-		// based on: update_option( 'gravityformsaddon_' . $this->_slug . '_settings', $settings );
-		// add_action( 'update_option_gravityformsaddon_gravityformschip_settings', array( $this, 'global_validate_keys' ), 10, 3 );
 	}
 
 	public static function get_instance() {
@@ -193,37 +190,54 @@ class GF_Chip extends GFPaymentAddOn {
 		return ob_get_clean();
 	}
 
-	public function global_validate_keys( $old_value, $new_value, $option_name ) {
-		if ( $option_name != 'gravityformsaddon_gravityformschip_settings' ) {
-			return false;
+	/**
+	 * Saves plugin settings and updates Account Status by validating the new keys.
+	 * Called when the user clicks Save Settings on the CHIP settings page.
+	 *
+	 * @param array $settings Decrypted plugin settings (brand_id, secret_key, etc.).
+	 */
+	public function update_plugin_settings( $settings ) {
+		$this->validate_and_update_account_status( $settings );
+		parent::update_plugin_settings( $settings );
+	}
+
+	/**
+	 * Validates Brand ID and Secret Key against CHIP API and updates Account Status options.
+	 * Used so the Account Status block shows the correct state after Save Settings.
+	 *
+	 * @param array $settings Plugin settings containing brand_id and secret_key.
+	 */
+	public function validate_and_update_account_status( $settings ) {
+		$brand_id   = isset( $settings['brand_id'] ) ? trim( (string) $settings['brand_id'] ) : '';
+		$secret_key = isset( $settings['secret_key'] ) ? trim( (string) $settings['secret_key'] ) : '';
+
+		if ( $brand_id === '' || $secret_key === '' ) {
+			update_option( 'gf_chip_global_key_validation', false );
+			update_option( 'gf_chip_global_error_code', '' );
+			$this->log_debug( __METHOD__ . "(): Global keys cleared or empty; Account Status set to Not set." );
+			return;
 		}
 
-		$this->log_debug( __METHOD__ . "(): Updating global keys. Old value " . print_r( $old_value, true ) );
+		$this->log_debug( __METHOD__ . "(): Validating global keys. New value " . print_r( array( 'brand_id' => $brand_id, 'secret_key' => '***' ), true ) );
 
-		$chip = GFChipAPI::get_instance( $new_value['secret_key'], $new_value['brand_id'] );
-		$public_key = $chip->get_public_key();
+		$chip        = GFChipAPI::get_instance( $secret_key, $brand_id );
+		$public_key  = $chip->get_public_key();
 
 		if ( is_string( $public_key ) ) {
 			update_option( 'gf_chip_global_key_validation', true );
 			update_option( 'gf_chip_global_error_code', '' );
-
-			$debug_log = __METHOD__ . "(): Global keys updated and successfully validated. New value " . print_r( $new_value, true );
-		} else if ( is_array( $public_key['__all__'] ) ) {
+			$this->log_debug( __METHOD__ . "(): Global keys validated successfully." );
+		} elseif ( is_array( $public_key ) && ! empty( $public_key['__all__'] ) && is_array( $public_key['__all__'] ) ) {
 			$error_code_a = array_column( $public_key['__all__'], 'code' );
-			$error_code = implode( ', ', $error_code_a );
-
+			$error_code   = implode( ', ', $error_code_a );
 			update_option( 'gf_chip_global_key_validation', false );
 			update_option( 'gf_chip_global_error_code', $error_code );
-
-			$debug_log = __METHOD__ . "(): Updating global keys failed " . print_r( $old_value, true ) . print_r( $error_code, true );
+			$this->log_debug( __METHOD__ . "(): Global keys validation failed: " . $error_code );
 		} else {
 			update_option( 'gf_chip_global_key_validation', false );
-			update_option( 'gf_chip_global_error_code', 'unspecified error!' );
-
-			$debug_log = __METHOD__ . "(): Updating global keys failed with unspecified error";
+			update_option( 'gf_chip_global_error_code', __( 'unspecified error!', 'gravityformschip' ) );
+			$this->log_debug( __METHOD__ . "(): Global keys validation failed with unspecified error." );
 		}
-
-		$this->log_debug( $debug_log );
 	}
 
 	public function feed_settings_fields() {
