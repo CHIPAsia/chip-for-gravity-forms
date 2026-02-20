@@ -1087,13 +1087,13 @@ class GF_Chip extends GFPaymentAddOn {
 				$this->log_debug( __METHOD__ . '(): Failed to decode X-Signature.' );
 				return null;
 			}
-			$body_hash = hash( 'sha256', $raw_body, true );
-			$key       = openssl_pkey_get_public( $public_key );
+			$key = openssl_pkey_get_public( $public_key );
 			if ( false === $key ) {
 				$this->log_debug( __METHOD__ . '(): Invalid public key.' );
 				return null;
 			}
-			$verified = ( 1 === openssl_verify( $body_hash, $signature, $key, OPENSSL_ALGO_SHA256 ) );
+			// CHIP webhook: sha256WithRSAEncryption; OpenSSL hashes $raw_body internally.
+			$verified = ( 1 === openssl_verify( $raw_body, $signature, $key, OPENSSL_ALGO_SHA256 ) );
 			// Key resource is freed when $key goes out of scope; openssl_pkey_free() is deprecated in PHP 8.0+.
 			if ( ! $verified ) {
 				$this->log_debug( __METHOD__ . '(): Signature verification failed.' );
@@ -1203,6 +1203,14 @@ class GF_Chip extends GFPaymentAddOn {
 	 * @param string $result          Result.
 	 */
 	public function post_callback( $callback_action, $result ) {
+		if ( null === $callback_action ) {
+			exit;
+		}
+		if ( ! is_array( $callback_action ) || empty( $callback_action['entry_id'] ) ) {
+			$this->log_debug( __METHOD__ . '(): Invalid callback action; skipping.' );
+			return;
+		}
+
 		$this->log_debug( 'Start of ' . __METHOD__ . '(): for entry id: #' . $callback_action['entry_id'] );
 
 		// Release per-payment lock (same identifier as in callback).
