@@ -62,6 +62,7 @@ composer install
 
 - [API Documentation](https://docs.chip-in.asia)
 - [Gravity Forms Merge Tags](https://docs.gravityforms.com/merge-tags/#entry-data) (e.g. `{entry:transaction_id}` for Purchase ID in notifications)
+- [Gravity Forms Logging and Debugging](https://docs.gravityforms.com/logging-and-debugging/) – enable logging in Forms → Settings to view CHIP callback and payment logs
 
 ## Community
 

@@ -71,7 +71,7 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 
 * WordPress 6.3 or greater
 * Gravity Forms plugin (active)
-* PHP 7.4 or greater (PHP 8.0 or greater is recommended)
+* PHP 7.4 or greater (PHP 8.0+ recommended)
 * MySQL 5.6 or greater, OR MariaDB 10.1 or greater
 
 = Automatic installation =
@@ -101,6 +101,10 @@ No. The plugin works with CHIP's standard webhook flow; no separate public key i
 = Where can I find documentation? =
 
 Visit our [API documentation](https://docs.chip-in.asia/) for technical reference.
+
+= How can I view CHIP plugin debug logs? =
+
+The plugin uses Gravity Forms logging for callbacks, webhooks, and payment flow. To view these logs, enable logging in **Forms → Settings** (set Logging to On), then open the **Logging** tab to view or delete logs for CHIP for Gravity Forms. See [Gravity Forms Logging and Debugging](https://docs.gravityforms.com/logging-and-debugging/) for details. Disable logging when you are done troubleshooting.
 
 = What CHIP API services are used in this plugin? =
 
