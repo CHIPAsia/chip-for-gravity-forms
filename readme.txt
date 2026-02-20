@@ -61,6 +61,7 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 * Added - Form settings image in global CHIP description.
 * Added - Public key support: store CHIP public key by company ID when saving global or form settings; verify webhook signature when key is available and use payload directly, with fallback to get_payment.
 * Added - Per-payment lock on callback to prevent duplicate processing while allowing other payments to run in parallel.
+* Added - Refund button now requires user confirmation before processing the refund.
 * Changed - Minimum WordPress version set to 6.3.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
