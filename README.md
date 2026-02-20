@@ -41,7 +41,7 @@ Refunds made through the WordPress Dashboard (Gravity Forms → Entries) are ful
 
 ## Development
 
-**Note:** To check plugin compliance locally before committing, run one of the following:
+**Plugin check:** To check plugin compliance locally before committing, run one of the following:
 
 ```bash
 # Using Docker (recommended)
@@ -49,6 +49,13 @@ sudo docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 # Or without Docker
 ./scripts/run-wp-plugin-check.sh
+```
+
+**Unit tests:** After `composer install`, run PHPUnit:
+
+```bash
+composer install
+./vendor/bin/phpunit
 ```
 
 ## Documentation

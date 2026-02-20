@@ -9,3 +9,8 @@ test_stub.php
 # Local plugin-check / release artifacts
 /dist/
 /build/
+
+# Composer and PHPUnit
+/vendor/
+.phpunit.cache
+.phpunit.result.cache

@@ -77,20 +77,6 @@ class GF_CHIP_API {
 	}
 
 	/**
-	 * Fetches payment methods for currency and language.
-	 *
-	 * @param string $currency Currency code.
-	 * @param string $language Language code.
-	 * @return array|null
-	 */
-	public function payment_methods( $currency, $language ) {
-		return $this->call(
-			'GET',
-			"/payment_methods/?brand_id={$this->brand_id}&currency={$currency}&language={$language}"
-		);
-	}
-
-	/**
 	 * Gets a single payment (purchase).
 	 *
 	 * @param string $payment_id Purchase ID.
@@ -109,17 +95,6 @@ class GF_CHIP_API {
 	 */
 	public function cancel_payment( $payment_id ) {
 		return $this->call( 'POST', "/purchases/{$payment_id}/cancel/" );
-	}
-
-	/**
-	 * Checks if a payment was successful.
-	 *
-	 * @param string $payment_id Purchase ID.
-	 * @return bool
-	 */
-	public function was_payment_successful( $payment_id ) {
-		$result = $this->get_payment( $payment_id );
-		return $result && 'paid' === $result['status'];
 	}
 
 	/**

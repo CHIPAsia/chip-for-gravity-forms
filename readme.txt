@@ -113,10 +113,6 @@ Visit our [API documentation](https://docs.chip-in.asia/) for technical referenc
 * `POST /purchases/{id}/refund/` – Refund payment
 * `POST /purchases/{id}/cancel/` – Cancel payment
 
-*Other:*
-
-* `GET /payment_methods/` – Get available payment methods for currency and language
-
 = How do I configure CHIP on a form? =
 
 1. Edit your form in Gravity Forms.
