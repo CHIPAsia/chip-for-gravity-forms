@@ -1,0 +1,8 @@
+# Local plugin-check: run PHP compatibility + PHPCS without pushing to GitHub.
+# Usage: docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
+services:
+  plugin-check:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app

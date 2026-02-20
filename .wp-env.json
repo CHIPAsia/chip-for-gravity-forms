@@ -1,0 +1,10 @@
+{
+	"core": null,
+	"port": 8880,
+	"testsPort": 8881,
+	"testsEnvironment": false,
+	"plugins": ["https://downloads.wordpress.org/plugin/plugin-check.zip"],
+	"mappings": {
+		"wp-content/plugins/chip-for-gravity-forms": "."
+	}
+}

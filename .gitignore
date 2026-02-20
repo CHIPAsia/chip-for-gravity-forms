@@ -5,3 +5,7 @@ yarn.lock
 /node_modules/
 
 test_stub.php
+
+# Local plugin-check / release artifacts
+/dist/
+/build/
