@@ -103,10 +103,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Prepare plugin directory (exclude hidden files)
+      - name: Prepare plugin directory
         run: |
           mkdir -p ./build/chip-for-gravity-forms
-          rsync -av --exclude='.*' --exclude='build' --exclude='node_modules' ./ ./build/chip-for-gravity-forms/
+          git archive HEAD | tar -x -C ./build/chip-for-gravity-forms
+          echo "✅ Prepared plugin folder"
           ls -la ./build/chip-for-gravity-forms/
 
       - name: Run Plugin Check
