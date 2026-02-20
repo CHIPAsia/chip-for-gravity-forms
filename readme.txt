@@ -59,6 +59,8 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 * Added - "Copy from global configuration" button in form feed settings when using Form Configuration.
 * Added - Account status block in form configuration to verify Brand ID and Secret Key.
 * Added - Form settings image in global CHIP description.
+* Added - Public key support: store CHIP public key by company ID when saving global or form settings; verify webhook signature when key is available and use payload directly, with fallback to get_payment.
+* Added - Per-payment lock on callback to prevent duplicate processing while allowing other payments to run in parallel.
 * Changed - Minimum WordPress version set to 6.3.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
@@ -94,7 +96,7 @@ Brand ID and Secret Key are available through our [merchant dashboard](https://g
 
 = Do I need to set a public key for webhook? =
 
-No. The plugin works with CHIP's standard webhook flow; no separate public key is required for the webhook.
+No. The plugin works with CHIP's standard webhook flow; no separate public key is required. When you save your global or form CHIP settings, the plugin stores the public key automatically (by company ID) so it can verify webhook signatures when available and use the payload directly; otherwise it falls back to fetching payment status via the API.
 
 = Where can I find documentation? =
 
