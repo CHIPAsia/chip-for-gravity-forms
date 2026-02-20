@@ -21,12 +21,6 @@ jobs:
           VERSION=${TAG#gravity-forms-upload-v}
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create new version folder
-        run: |
-          VERSION="${{ steps.vars.outputs.version }}"
-          mkdir "$VERSION"
-          git archive HEAD | tar -x -C "$VERSION"
-
       - name: Install SVN
         run: sudo apt-get install -y subversion
 
@@ -42,10 +36,13 @@ jobs:
             exit 1
           fi
 
-      - name: Copy new version folder into tags folder
+      - name: Prepare plugin folder in tags
         run: |
           VERSION="${{ steps.vars.outputs.version }}"
-          cp -R "$VERSION" "svn-tags/tags"
+          mkdir -p "svn-tags/tags/$VERSION"
+          git archive HEAD | tar -x -C "svn-tags/tags/$VERSION"
+          echo "✅ Prepared plugin folder for $VERSION"
+          ls -la "svn-tags/tags/$VERSION/"
 
       - name: Track new version folder
         run: |
