@@ -1433,6 +1433,9 @@ class GF_Chip extends GFPaymentAddOn {
 
 		<script type="text/javascript">
 			function RefundPayment() {
+				if ( ! confirm( <?php echo wp_json_encode( esc_html__( 'Are you sure you want to refund this payment? This action cannot be undone.', 'chip-for-gravity-forms' ) ); ?> ) ) {
+					return;
+				}
 
 				jQuery('#refund_spinner').fadeIn();
 
