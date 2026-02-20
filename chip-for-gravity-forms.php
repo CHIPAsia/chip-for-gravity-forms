@@ -11,7 +11,7 @@
  * License: GNU General Public License v3.0
  * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  *
- * Gravity Forms tested up to: 2.9.27
+ * Gravity Forms tested up to: 2.9
  *
  * @package GravityFormsCHIP
  */
