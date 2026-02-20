@@ -53,7 +53,13 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 == Changelog ==
 
 = 1.2.0 2026-02-20 =
-* Fixed - Fix issue when setting keys in Global Configuration.
+* Fixed - Global configuration (Brand ID and Secret Key) not saved when saving settings.
+* Fixed - Fatal error when GFAddon expected full path; plugin now works with Gravity Forms addon loader.
+* Fixed - Application files not permitted (WordPress Plugin Check compatibility).
+* Added - "Copy from global configuration" button in form feed settings when using Form Configuration.
+* Added - Account status block in form configuration to verify Brand ID and Secret Key.
+* Added - Form settings image in global CHIP description.
+* Changed - Minimum WordPress version set to 6.3.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
 
