@@ -26,5 +26,18 @@ require_once $autoload;
 
 \WP_Mock::bootstrap();
 
+// Stub WordPress functions used by the API but not provided by WP_Mock.
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	/**
+	 * @param mixed $data   Data to encode.
+	 * @param int   $options Optional.
+	 * @param int   $depth   Optional.
+	 * @return string|false
+	 */
+	function wp_json_encode( $data, $options = 0, $depth = 512 ) {
+		return json_encode( $data, $options, $depth );
+	}
+}
+
 // Load plugin classes under test (API does not depend on Gravity Forms).
 require_once GF_CHIP_PLUGIN_PATH . 'class-gf-chip-api.php';
