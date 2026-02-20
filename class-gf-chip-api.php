@@ -128,7 +128,39 @@ class GF_CHIP_API {
 	 * @return array|string|null
 	 */
 	public function get_public_key() {
-		return $this->call( 'GET', '/public_key/' );
+		$result = $this->call( 'GET', '/public_key/' );
+		if ( is_string( $result ) ) {
+			$result = str_replace( '\n', "\n", $result );
+		}
+		return $result;
+	}
+
+	/**
+	 * Gets the company UID for the current account (for storing public key by company).
+	 * Calls GET /company_statements/; if results is empty, calls POST /company_statements/ to create one.
+	 *
+	 * @return string|null Company UID or null on failure.
+	 */
+	public function get_company_uid() {
+		$result = $this->call( 'GET', '/company_statements/' );
+		if ( is_array( $result ) && ! empty( $result['results'] ) && is_array( $result['results'] ) ) {
+			$first = reset( $result['results'] );
+			return isset( $first['company_uid'] ) ? (string) $first['company_uid'] : null;
+		}
+		if ( is_array( $result ) && ( empty( $result['results'] ) || ! isset( $result['results'] ) ) ) {
+			$post_result = $this->call(
+				'POST',
+				'/company_statements/',
+				array(
+					'format'   => 'csv',
+					'timezone' => 'UTC',
+				)
+			);
+			if ( is_array( $post_result ) && isset( $post_result['company_uid'] ) ) {
+				return (string) $post_result['company_uid'];
+			}
+		}
+		return null;
 	}
 
 	/**

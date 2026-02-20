@@ -128,6 +128,7 @@ class GF_Chip extends GFPaymentAddOn {
 	public function init() {
 		parent::init();
 		add_action( 'gform_post_payment_callback', array( $this, 'handle_post_payment_callback' ), 10, 3 );
+		add_action( 'gform_post_save_feed_settings', array( $this, 'maybe_store_public_key_on_feed_save' ), 10, 4 );
 	}
 
 	/**
@@ -245,8 +246,8 @@ class GF_Chip extends GFPaymentAddOn {
 			?>
 			<?php
 			printf(
-				// translators: %s is the opening anchor tag for the screenshot link.
-				esc_html__( 'To use this global configuration on a form, choose "Global Configuration" in the form\'s CHIP feed settings. %sView configuration screenshot%s.', 'chip-for-gravity-forms' ),
+				// translators: %1$s is the opening anchor tag, %2$s is the closing anchor tag for the screenshot link.
+				esc_html__( 'To use this global configuration on a form, choose "Global Configuration" in the form\'s CHIP feed settings. %1$sView configuration screenshot%2$s.', 'chip-for-gravity-forms' ),
 				'<a href="' . esc_url( $img_url ) . '" target="_blank" rel="noopener noreferrer">',
 				'</a>'
 			);
@@ -454,6 +455,10 @@ class GF_Chip extends GFPaymentAddOn {
 		if ( is_string( $public_key ) ) {
 			update_option( 'gf_chip_global_key_validation', true );
 			update_option( 'gf_chip_global_error_code', '' );
+			$company_uid = $chip->get_company_uid();
+			if ( is_string( $company_uid ) && '' !== $company_uid ) {
+				update_option( 'gf_chip_public_key_' . $company_uid, $public_key, false );
+			}
 			$this->log_debug( __METHOD__ . '(): Global keys validated successfully.' );
 		} elseif ( is_array( $public_key ) && ! empty( $public_key['__all__'] ) && is_array( $public_key['__all__'] ) ) {
 			$error_code_a = array_column( $public_key['__all__'], 'code' );
@@ -465,6 +470,38 @@ class GF_Chip extends GFPaymentAddOn {
 			update_option( 'gf_chip_global_key_validation', false );
 			update_option( 'gf_chip_global_error_code', __( 'An unspecified error occurred.', 'chip-for-gravity-forms' ) );
 			$this->log_debug( __METHOD__ . '(): Global keys validation failed with unspecified error.' );
+		}
+	}
+
+	/**
+	 * After feed save: store public key by company_uid when Form Configuration has brand_id and secret_key.
+	 *
+	 * @param int    $feed_id   Feed ID.
+	 * @param int    $form_id   Form ID.
+	 * @param array  $settings  Saved feed meta (e.g. chipConfigurationType, brand_id, secret_key).
+	 * @param object $addon    GFAddOn instance that saved the feed.
+	 */
+	public function maybe_store_public_key_on_feed_save( $feed_id, $form_id, $settings, $addon ) {
+		if ( ! is_object( $addon ) || ! isset( $addon->_slug ) || $addon->_slug !== $this->_slug ) {
+			return;
+		}
+		$configuration_type = isset( $settings['chipConfigurationType'] ) ? $settings['chipConfigurationType'] : '';
+		if ( 'form' !== $configuration_type ) {
+			return;
+		}
+		$brand_id   = isset( $settings['brand_id'] ) ? trim( (string) $settings['brand_id'] ) : '';
+		$secret_key = isset( $settings['secret_key'] ) ? trim( (string) $settings['secret_key'] ) : '';
+		if ( '' === $brand_id || '' === $secret_key ) {
+			return;
+		}
+		$chip       = GF_CHIP_API::get_instance( $secret_key, $brand_id );
+		$public_key = $chip->get_public_key();
+		if ( ! is_string( $public_key ) ) {
+			return;
+		}
+		$company_uid = $chip->get_company_uid();
+		if ( is_string( $company_uid ) && '' !== $company_uid ) {
+			update_option( 'gf_chip_public_key_' . $company_uid, $public_key, false );
 		}
 	}
 
@@ -959,6 +996,11 @@ class GF_Chip extends GFPaymentAddOn {
 	 * @return array|null Action array or null.
 	 */
 	public function callback() {
+		if ( isset( $_SERVER['REQUEST_METHOD'] ) && 'POST' === $_SERVER['REQUEST_METHOD'] && ! empty( $_SERVER['HTTP_X_SIGNATURE'] ) ) {
+			$action = $this->process_webhook_callback();
+			return $action;
+		}
+
 		$entry_id = intval( rgget( 'entry_id' ) );
 		$this->log_debug( 'Started ' . __METHOD__ . '(): for entry id #' . $entry_id );
 
@@ -989,35 +1031,14 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . "(): Entry ID #$entry_id get purchases information" . wp_json_encode( $chip_payment ) );
 
-		$transaction_data = rgar( $chip_payment, 'transaction_data' );
-		$payment_method   = rgar( $transaction_data, 'payment_method' );
-
-		$status = $chip_payment['status'];
-
-		$type = 'fail_payment';
-		if ( 'paid' === $chip_payment['status'] ) {
-			$type = 'complete_payment';
+		$action = $this->build_callback_action_from_chip_payment( $payment_id, $entry_id, $chip_payment );
+		if ( null === $action ) {
+			return null;
 		}
 
-		$action = array(
-			'id'             => $payment_id,
-			'type'           => $type,
-			'transaction_id' => $payment_id,
-			'entry_id'       => $entry_id,
-			'payment_method' => $payment_method,
-			'amount'         => sprintf( '%.2f', $chip_payment['purchase']['total'] / 100 ),
-		);
-
-		// For status other than 'paid' and 'error', add abort_callback to bypass callback.
-		if ( 'paid' !== $status && 'error' !== $status ) {
-			$this->log_debug( __METHOD__ . "(): Status '$status' is not 'paid' or 'error', adding abort_callback to bypass callback" );
-			$action['abort_callback'] = 'true';
-		}
-
-		// Acquire lock to prevent concurrency.
-		$GLOBALS['wpdb']->get_results(
-			"SELECT GET_LOCK('chip_gf_payment', 15);"
-		);
+		// Acquire per-payment lock to prevent duplicate processing (allows other payments to run in parallel).
+		$lock_name = 'chip_gf_payment_' . $payment_id;
+		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT GET_LOCK(%s, 15)', $lock_name ) );
 
 		if ( $this->is_duplicate_callback( $payment_id ) ) {
 			$action['abort_callback'] = 'true';
@@ -1025,6 +1046,153 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( 'End of ' . __METHOD__ . '(): params return value: ' . wp_json_encode( $action ) );
 
+		return $action;
+	}
+
+	/**
+	 * Processes POST webhook callback (X-Signature present): verify signature and use payload, or fallback to get_payment.
+	 *
+	 * @return array|null Action array or null on abort.
+	 */
+	private function process_webhook_callback() {
+		$raw_body = file_get_contents( 'php://input' );
+		$payload  = json_decode( $raw_body, true );
+		if ( ! is_array( $payload ) || empty( $payload['id'] ) ) {
+			$this->log_debug( __METHOD__ . '(): Invalid JSON or missing payload id.' );
+			return null;
+		}
+
+		$payment_id = $payload['id'];
+		$company_id = isset( $payload['company_id'] ) ? trim( (string) $payload['company_id'] ) : '';
+
+		$entry_id = absint( rgget( 'entry_id' ) );
+		if ( ! $entry_id ) {
+			$this->log_debug( __METHOD__ . '(): Missing entry_id in callback params.' );
+			return null;
+		}
+		$stored_payment_id = gform_get_meta( $entry_id, 'chip_payment_id' );
+		if ( (string) $stored_payment_id !== (string) $payment_id ) {
+			$this->log_debug( __METHOD__ . "(): Entry #{$entry_id} chip_payment_id does not match payload id {$payment_id}." );
+			return null;
+		}
+
+		$public_key = is_string( $company_id ) && '' !== $company_id ? get_option( 'gf_chip_public_key_' . $company_id, '' ) : '';
+		$public_key = is_string( $public_key ) ? str_replace( '\n', "\n", $public_key ) : '';
+
+		if ( '' !== $public_key ) {
+			$signature_b64 = isset( $_SERVER['HTTP_X_SIGNATURE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_SIGNATURE'] ) ) : '';
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- CHIP webhook X-Signature is base64-encoded.
+			$signature = $signature_b64 ? base64_decode( $signature_b64, true ) : false;
+			if ( false === $signature ) {
+				$this->log_debug( __METHOD__ . '(): Failed to decode X-Signature.' );
+				return null;
+			}
+			$body_hash = hash( 'sha256', $raw_body, true );
+			$key       = openssl_pkey_get_public( $public_key );
+			if ( false === $key ) {
+				$this->log_debug( __METHOD__ . '(): Invalid public key.' );
+				return null;
+			}
+			$verified = ( 1 === openssl_verify( $body_hash, $signature, $key, OPENSSL_ALGO_SHA256 ) );
+			// Key resource is freed when $key goes out of scope; openssl_pkey_free() is deprecated in PHP 8.0+.
+			if ( ! $verified ) {
+				$this->log_debug( __METHOD__ . '(): Signature verification failed.' );
+				return null;
+			}
+
+			$action = $this->build_callback_action_from_webhook_payload( $payload, $entry_id );
+		} else {
+			$entry              = GFAPI::get_entry( $entry_id );
+			$submission_feed    = $this->get_payment_feed( $entry );
+			$configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global' );
+			$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
+			$secret_key         = '';
+			$brand_id           = '';
+			if ( $gf_global_settings ) {
+				$secret_key = rgar( $gf_global_settings, 'secret_key' );
+				$brand_id   = rgar( $gf_global_settings, 'brand_id' );
+			}
+			if ( 'form' === $configuration_type ) {
+				$secret_key = rgars( $submission_feed, 'meta/secret_key' );
+				$brand_id   = rgars( $submission_feed, 'meta/brand_id' );
+			}
+			$chip         = GF_CHIP_API::get_instance( $secret_key, $brand_id );
+			$chip_payment = $chip->get_payment( $payment_id );
+			$action       = $this->build_callback_action_from_chip_payment( $payment_id, $entry_id, $chip_payment );
+		}
+
+		if ( null === $action ) {
+			return null;
+		}
+
+		// Acquire per-payment lock (allows other payments to run in parallel).
+		$lock_name = 'chip_gf_payment_' . $payment_id;
+		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT GET_LOCK(%s, 15)', $lock_name ) );
+		if ( $this->is_duplicate_callback( $payment_id ) ) {
+			$action['abort_callback'] = 'true';
+		}
+
+		return $action;
+	}
+
+	/**
+	 * Builds callback action array from CHIP get_payment response.
+	 *
+	 * @param string     $payment_id   Purchase ID.
+	 * @param int        $entry_id     Entry ID.
+	 * @param array|null $chip_payment Response from get_payment.
+	 * @return array|null Action array or null if chip_payment invalid.
+	 */
+	private function build_callback_action_from_chip_payment( $payment_id, $entry_id, $chip_payment ) {
+		if ( ! is_array( $chip_payment ) ) {
+			return null;
+		}
+		$transaction_data = rgar( $chip_payment, 'transaction_data' );
+		$payment_method   = is_array( $transaction_data ) ? rgar( $transaction_data, 'payment_method' ) : '';
+		$status           = isset( $chip_payment['status'] ) ? $chip_payment['status'] : '';
+		$total            = isset( $chip_payment['purchase']['total'] ) ? (int) $chip_payment['purchase']['total'] : 0;
+		return $this->build_callback_action( $payment_id, $entry_id, $status, $payment_method, $total );
+	}
+
+	/**
+	 * Builds callback action array from webhook payload (e.g. purchase.paid).
+	 *
+	 * @param array $payload  Decoded webhook JSON (id, status, company_id, purchase.total, transaction_data.payment_method).
+	 * @param int   $entry_id Entry ID.
+	 * @return array Action array.
+	 */
+	private function build_callback_action_from_webhook_payload( array $payload, $entry_id ) {
+		$payment_id       = isset( $payload['id'] ) ? $payload['id'] : '';
+		$status           = isset( $payload['status'] ) ? $payload['status'] : '';
+		$transaction_data = isset( $payload['transaction_data'] ) && is_array( $payload['transaction_data'] ) ? $payload['transaction_data'] : array();
+		$payment_method   = isset( $transaction_data['payment_method'] ) ? $transaction_data['payment_method'] : '';
+		$total            = isset( $payload['purchase']['total'] ) ? (int) $payload['purchase']['total'] : 0;
+		return $this->build_callback_action( $payment_id, $entry_id, $status, $payment_method, $total );
+	}
+
+	/**
+	 * Builds the action array for post_callback (type, transaction_id, entry_id, payment_method, amount, abort_callback).
+	 *
+	 * @param string $payment_id     Purchase ID.
+	 * @param int    $entry_id       Entry ID.
+	 * @param string $status         Payment status (e.g. paid, error).
+	 * @param string $payment_method Payment method code.
+	 * @param int    $total_cents    Total amount in cents.
+	 * @return array Action array.
+	 */
+	private function build_callback_action( $payment_id, $entry_id, $status, $payment_method, $total_cents ) {
+		$type   = ( 'paid' === $status ) ? 'complete_payment' : 'fail_payment';
+		$action = array(
+			'id'             => $payment_id,
+			'type'           => $type,
+			'transaction_id' => $payment_id,
+			'entry_id'       => $entry_id,
+			'payment_method' => $payment_method,
+			'amount'         => sprintf( '%.2f', $total_cents / 100 ),
+		);
+		if ( 'paid' !== $status && 'error' !== $status ) {
+			$action['abort_callback'] = 'true';
+		}
 		return $action;
 	}
 
@@ -1037,10 +1205,11 @@ class GF_Chip extends GFPaymentAddOn {
 	public function post_callback( $callback_action, $result ) {
 		$this->log_debug( 'Start of ' . __METHOD__ . '(): for entry id: #' . $callback_action['entry_id'] );
 
-		// Release lock to enable concurrency.
-		$GLOBALS['wpdb']->get_results(
-			"SELECT RELEASE_LOCK('chip_gf_payment');"
-		);
+		// Release per-payment lock (same identifier as in callback).
+		$lock_name = 'chip_gf_payment_' . ( isset( $callback_action['transaction_id'] ) ? $callback_action['transaction_id'] : '' );
+		if ( '' !== $lock_name ) {
+			$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		}
 
 		$entry_id = $callback_action['entry_id'];
 		$entry    = GFAPI::get_entry( $entry_id );
@@ -1051,7 +1220,7 @@ class GF_Chip extends GFPaymentAddOn {
 			$entry_id = $callback_action['entry_id'];
 			$form_id  = $entry['form_id'];
 
-			$message = __( 'Payment successful. ', 'chip-for-gravity-forms' );
+			$message = __( ' Payment successful. ', 'chip-for-gravity-forms' );
 			$url     = $this->get_confirmation_url( $entry, $form_id );
 		} else {
 			$submission_feed = $this->get_payment_feed( $entry );
@@ -1378,6 +1547,16 @@ class GF_Chip extends GFPaymentAddOn {
 
 		foreach ( $option_names as $option_name ) {
 			delete_option( $option_name );
+		}
+
+		global $wpdb;
+		$like = $wpdb->esc_like( 'gf_chip_public_key_' ) . '%';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Uninstall: options table name; LIKE value prepared.
+		$rows = $wpdb->get_col( $wpdb->prepare( 'SELECT option_name FROM ' . $wpdb->options . ' WHERE option_name LIKE %s', $like ) );
+		if ( is_array( $rows ) ) {
+			foreach ( $rows as $option_name ) {
+				delete_option( $option_name );
+			}
 		}
 
 		parent::uninstall();

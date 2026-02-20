@@ -39,6 +39,18 @@ The official CHIP payment add-on for Gravity Forms. Accept payments seamlessly w
 
 Refunds made through the WordPress Dashboard (Gravity Forms → Entries) are full refunds only. A successful refund message means the request was sent to the CHIP API; completion depends on CHIP's refund policy.
 
+## Development
+
+**Note:** To check plugin compliance locally before committing, run one of the following:
+
+```bash
+# Using Docker (recommended)
+sudo docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
+
+# Or without Docker
+./scripts/run-wp-plugin-check.sh
+```
+
 ## Documentation
 
 - [API Documentation](https://docs.chip-in.asia)
