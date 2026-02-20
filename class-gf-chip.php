@@ -228,8 +228,8 @@ class GF_Chip extends GFPaymentAddOn {
 	 */
 	public function get_description() {
 		$img_url = plugins_url( 'assets/form-settings.png', __FILE__ );
-		$img_alt = esc_attr__( 'Configuration Type dropdown showing Global Configuration and Form Configuration options.', 'chip-for-gravity-forms' );
-		ob_start(); ?>
+		ob_start();
+		?>
 		<p>
 			<?php
 			printf(
@@ -238,18 +238,20 @@ class GF_Chip extends GFPaymentAddOn {
 					'CHIP — Digital Finance Platform. %1$sLearn more%2$s. %3$s%3$sGlobal settings are optional. You may configure CHIP per form in each form\'s CHIP feed settings instead.',
 					'chip-for-gravity-forms'
 				),
-				'<a href="https://www.chip-in.asia/" target="_blank">',
+				'<a href="https://www.chip-in.asia/" target="_blank" rel="noopener noreferrer">',
 				'</a>',
 				'<br>'
 			);
 			?>
+			<?php
+			printf(
+				// translators: %s is the opening anchor tag for the screenshot link.
+				esc_html__( 'To use this global configuration on a form, choose "Global Configuration" in the form\'s CHIP feed settings. %sView configuration screenshot%s.', 'chip-for-gravity-forms' ),
+				'<a href="' . esc_url( $img_url ) . '" target="_blank" rel="noopener noreferrer">',
+				'</a>'
+			);
+			?>
 		</p>
-		<figure style="margin: 1em 0;">
-			<img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $img_alt ); ?>" style="max-width: 100%; height: auto;" />
-			<figcaption style="margin-top: 0.5em; font-style: italic; color: #50575e;">
-				<?php esc_html_e( 'To use this global configuration on a form, choose "Global Configuration" in the form\'s CHIP feed settings.', 'chip-for-gravity-forms' ); ?>
-			</figcaption>
-		</figure>
 		<?php
 
 		return ob_get_clean();
