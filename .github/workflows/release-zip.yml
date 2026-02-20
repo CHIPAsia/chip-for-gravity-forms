@@ -6,16 +6,26 @@ on:
 
 jobs:
   build-and-release:
+    name: Build and Upload Release Zip
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Prepare plugin folder
+        run: |
+          # Same structure as plugin-check: folder name MUST match the plugin slug for WordPress
+          mkdir -p dist/chip-for-gravity-forms
+          git archive HEAD | tar -x -C dist/chip-for-gravity-forms
+          echo "✅ Prepared plugin folder"
+          ls -la dist/chip-for-gravity-forms/
+
       - name: Create zip file
         run: |
-          git archive HEAD --format=zip --output=chip-for-gravity-forms.zip
-      
+          cd dist && zip -r ../chip-for-gravity-forms.zip chip-for-gravity-forms
+          echo "✅ Created chip-for-gravity-forms.zip (root folder: chip-for-gravity-forms/)"
+
       - name: Upload release asset
         run: |
           gh release upload "${{ github.event.release.tag_name }}" chip-for-gravity-forms.zip --clobber
