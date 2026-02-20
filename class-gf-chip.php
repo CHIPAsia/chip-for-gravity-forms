@@ -267,14 +267,14 @@ class GF_Chip extends GFPaymentAddOn {
 				'label'    => esc_html__( 'Brand ID', 'chip-for-gravity-forms' ),
 				'type'     => 'text',
 				'required' => true,
-				'tooltip'  => '<h6>' . esc_html__( 'Brand ID', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Brand ID enables you to represent your Brand suitable for the system using the same CHIP account.', 'chip-for-gravity-forms' ),
+				'tooltip'  => '<h6>' . esc_html__( 'Brand ID', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Brand ID enables you to represent your brand in the system using the same CHIP account.', 'chip-for-gravity-forms' ),
 			),
 			array(
 				'name'     => 'secret_key',
 				'label'    => esc_html__( 'Secret Key', 'chip-for-gravity-forms' ),
 				'type'     => 'text',
 				'required' => true,
-				'tooltip'  => '<h6>' . esc_html__( 'Secret Key', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Secret key is used to identify your account with CHIP. You are recommended to create dedicated secret key for each website.', 'chip-for-gravity-forms' ),
+				'tooltip'  => '<h6>' . esc_html__( 'Secret Key', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'The secret key is used to identify your account with CHIP. We recommend creating a dedicated secret key for each website.', 'chip-for-gravity-forms' ),
 			),
 
 		);
@@ -292,20 +292,20 @@ class GF_Chip extends GFPaymentAddOn {
 				'label'         => 'Refund',
 				'type'          => 'toggle',
 				'default_value' => 'false',
-				'tooltip'       => '<h6>' . esc_html__( 'Refund features', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refund can be made through Gravity Forms --> Entries. Default is disabled.', 'chip-for-gravity-forms' ),
+				'tooltip'       => '<h6>' . esc_html__( 'Refund features', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refunds can be made through Gravity Forms → Entries. Default is disabled.', 'chip-for-gravity-forms' ),
 			),
 			array(
 				'name'    => 'due_strict',
 				'label'   => esc_html__( 'Due Strict', 'chip-for-gravity-forms' ),
 				'type'    => 'toggle',
-				'tooltip' => '<h6>' . esc_html__( 'Due Strict', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to permit payments when Purchase\'s due has passed. By default those are permitted (and status will be set to overdue once due moment is passed). If this is set to true, it won\'t be possible to pay for an overdue invoice, and when due is passed the Purchase\'s status will be set to expired.', 'chip-for-gravity-forms' ),
+				'tooltip' => '<h6>' . esc_html__( 'Due Strict', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to permit payments when the purchase\'s due date has passed. By default those are permitted (and status will be set to overdue once the due moment has passed). If this is set to true, it will not be possible to pay for an overdue invoice, and when the due date has passed the purchase\'s status will be set to expired.', 'chip-for-gravity-forms' ),
 			),
 			array(
 				'name'        => 'due_strict_timing',
 				'label'       => esc_html__( 'Due Strict Timing (minutes)', 'chip-for-gravity-forms' ),
 				'type'        => 'text',
 				'placeholder' => '60 for 60 minutes',
-				'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'chip-for-gravity-forms' ),
+				'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases (e.g. 60 for 60 minutes). If due_strict is set while due strict timing is unset, it will default to 1 hour. Leave blank if unsure.', 'chip-for-gravity-forms' ),
 			),
 		);
 	}
@@ -387,7 +387,7 @@ class GF_Chip extends GFPaymentAddOn {
 			} elseif ( is_array( $public_key ) && ! empty( $public_key['__all__'] ) && is_array( $public_key['__all__'] ) ) {
 				$state = implode( ', ', array_column( $public_key['__all__'], 'code' ) );
 			} else {
-				$state = __( 'unspecified error!', 'chip-for-gravity-forms' );
+				$state = __( 'An unspecified error occurred.', 'chip-for-gravity-forms' );
 			}
 		}
 
@@ -461,7 +461,7 @@ class GF_Chip extends GFPaymentAddOn {
 			$this->log_debug( __METHOD__ . '(): Global keys validation failed: ' . $error_code );
 		} else {
 			update_option( 'gf_chip_global_key_validation', false );
-			update_option( 'gf_chip_global_error_code', __( 'unspecified error!', 'chip-for-gravity-forms' ) );
+			update_option( 'gf_chip_global_error_code', __( 'An unspecified error occurred.', 'chip-for-gravity-forms' ) );
 			$this->log_debug( __METHOD__ . '(): Global keys validation failed with unspecified error.' );
 		}
 	}
@@ -512,7 +512,7 @@ class GF_Chip extends GFPaymentAddOn {
 					'value' => 'form',
 				),
 			),
-			'tooltip'  => '<h6>' . esc_html__( 'Configuration Type', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Select a configuration type. If you want to configure CHIP on form basis, you may use Form Configuration. If you want to use globally set keys, choose Global Configuration.', 'chip-for-gravity-forms' ),
+			'tooltip'  => '<h6>' . esc_html__( 'Configuration Type', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Select a configuration type. If you want to configure CHIP on a per-form basis, use Form Configuration. If you want to use globally set keys, choose Global Configuration.', 'chip-for-gravity-forms' ),
 		);
 
 		$copy_btn               = sprintf(
@@ -525,7 +525,7 @@ class GF_Chip extends GFPaymentAddOn {
 				'field'  => 'chipConfigurationType',
 				'values' => array( 'form' ),
 			),
-			'description' => '<p>' . esc_html__( 'Set your Brand ID and Secret Key for the use of CHIP with this forms', 'chip-for-gravity-forms' ) . '</p>' . $copy_btn,
+			'description' => '<p>' . esc_html__( 'Set your Brand ID and Secret Key for the use of CHIP with this form.', 'chip-for-gravity-forms' ) . '</p>' . $copy_btn,
 			'fields'      => array(
 				array(
 					'name'     => 'brand_id',
@@ -533,7 +533,7 @@ class GF_Chip extends GFPaymentAddOn {
 					'type'     => 'text',
 					'class'    => 'medium',
 					'required' => true,
-					'tooltip'  => '<h6>' . esc_html__( 'Brand ID', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Brand ID enables you to represent your Brand suitable for the system using the same CHIP account.', 'chip-for-gravity-forms' ),
+					'tooltip'  => '<h6>' . esc_html__( 'Brand ID', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Brand ID enables you to represent your brand in the system using the same CHIP account.', 'chip-for-gravity-forms' ),
 				),
 				array(
 					'name'     => 'secret_key',
@@ -541,7 +541,7 @@ class GF_Chip extends GFPaymentAddOn {
 					'type'     => 'text',
 					'class'    => 'medium',
 					'required' => true,
-					'tooltip'  => '<h6>' . esc_html__( 'Secret Key', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Secret key is used to identify your account with CHIP. You are recommended to create dedicated secret key for each website.', 'chip-for-gravity-forms' ),
+					'tooltip'  => '<h6>' . esc_html__( 'Secret Key', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'The secret key is used to identify your account with CHIP. We recommend creating a dedicated secret key for each website.', 'chip-for-gravity-forms' ),
 				),
 			),
 		);
@@ -575,20 +575,20 @@ class GF_Chip extends GFPaymentAddOn {
 					'name'    => 'enable_refund',
 					'label'   => esc_html__( 'Refund', 'chip-for-gravity-forms' ),
 					'type'    => 'toggle',
-					'tooltip' => '<h6>' . esc_html__( 'Refund features', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refund can be made through Gravity Forms --> Entries. Default is disabled.', 'chip-for-gravity-forms' ),
+					'tooltip' => '<h6>' . esc_html__( 'Refund features', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to enable refund through Gravity Forms. If configured, refunds can be made through Gravity Forms → Entries. Default is disabled.', 'chip-for-gravity-forms' ),
 				),
 				array(
 					'name'    => 'due_strict',
 					'label'   => esc_html__( 'Due Strict', 'chip-for-gravity-forms' ),
 					'type'    => 'toggle',
-					'tooltip' => '<h6>' . esc_html__( 'Due Strict', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to permit payments when Purchase\'s due has passed. By default those are permitted (and status will be set to overdue once due moment is passed). If this is set to true, it won\'t be possible to pay for an overdue invoice, and when due is passed the Purchase\'s status will be set to expired.', 'chip-for-gravity-forms' ),
+					'tooltip' => '<h6>' . esc_html__( 'Due Strict', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Whether to permit payments when the purchase\'s due date has passed. By default those are permitted (and status will be set to overdue once the due moment has passed). If this is set to true, it will not be possible to pay for an overdue invoice, and when the due date has passed the purchase\'s status will be set to expired.', 'chip-for-gravity-forms' ),
 				),
 				array(
 					'name'        => 'due_strict_timing',
 					'label'       => esc_html__( 'Due Strict Timing (minutes)', 'chip-for-gravity-forms' ),
 					'type'        => 'text',
 					'placeholder' => '60 for 60 minutes',
-					'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases. 60 for 60 minutes. If due_strict is set while due strict timing unset, it will default to 1 hour. Leave blank if unsure', 'chip-for-gravity-forms' ),
+					'tooltip'     => '<h6>' . esc_html__( 'Due Strict Timing (minutes)', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Set due time to enforce due timing for purchases (e.g. 60 for 60 minutes). If due_strict is set while due strict timing is unset, it will default to 1 hour. Leave blank if unsure.', 'chip-for-gravity-forms' ),
 				),
 			),
 		);
@@ -611,9 +611,9 @@ class GF_Chip extends GFPaymentAddOn {
 	public function other_settings_fields() {
 		$other_settings_fields                 = parent::other_settings_fields();
 		$other_settings_fields[0]['name']      = 'clientInformation';
-		$other_settings_fields[0]['label']     = esc_html__( 'Client Information.', 'chip-for-gravity-forms' );
+		$other_settings_fields[0]['label']     = esc_html__( 'Client Information', 'chip-for-gravity-forms' );
 		$other_settings_fields[0]['field_map'] = $this->client_info_fields();
-		$other_settings_fields[0]['tooltip']   = '<h6>' . esc_html__( 'Client Information', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Map your Form Fields to the available listed fields. Only email are required to be set and other fields are optional. You may refer to CHIP API for further information about the specific fields.', 'chip-for-gravity-forms' );
+		$other_settings_fields[0]['tooltip']   = '<h6>' . esc_html__( 'Client Information', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Map your form fields to the available listed fields. Only email is required; other fields are optional. You may refer to the CHIP API for further information about the specific fields.', 'chip-for-gravity-forms' );
 
 		$conditional_logic = $other_settings_fields[1];
 		unset( $other_settings_fields[1] );
@@ -624,15 +624,15 @@ class GF_Chip extends GFPaymentAddOn {
 			'label'   => esc_html__( 'Client Information Metadata', 'chip-for-gravity-forms' ),
 			'type'    => 'dynamic_field_map',
 			'limit'   => 15,
-			'tooltip' => '<h6>' . esc_html__( 'Client Information Metadata', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'You may send custom key information to CHIP /purchases/ client fields. A maximum of 15 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated accordingly as per requirements by CHIP. Accepted keys is \'bank_account\', \'bank_code\', \'personal_code\', \'street_address\', \'country\', \'city\', \'zip_code\', \'shipping_street_address\', \'shipping_country\', \'shipping_city\', \'shipping_zip_code\', \'legal_name\', \'brand_name\', \'registration_number\', \'tax_number\'', 'chip-for-gravity-forms' ),
+			'tooltip' => '<h6>' . esc_html__( 'Client Information Metadata', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'You may send custom key information to CHIP /purchases/ client fields. A maximum of 15 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated accordingly as per CHIP requirements. Accepted keys are: \'bank_account\', \'bank_code\', \'personal_code\', \'street_address\', \'country\', \'city\', \'zip_code\', \'shipping_street_address\', \'shipping_country\', \'shipping_city\', \'shipping_zip_code\', \'legal_name\', \'brand_name\', \'registration_number\', \'tax_number\'.', 'chip-for-gravity-forms' ),
 		);
 
 		$other_settings_fields[] = array(
 			'name'      => 'purchaseInformation',
-			'label'     => esc_html__( 'Purhase Information', 'chip-for-gravity-forms' ),
+			'label'     => esc_html__( 'Purchase Information', 'chip-for-gravity-forms' ),
 			'type'      => 'field_map',
 			'field_map' => $this->purchase_info_fields(),
-			'tooltip'   => '<h6>' . esc_html__( 'Purchase Information', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Map your Form Fields to the available listed fields.', 'chip-for-gravity-forms' ),
+			'tooltip'   => '<h6>' . esc_html__( 'Purchase Information', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Map your form fields to the available listed fields.', 'chip-for-gravity-forms' ),
 		);
 
 		$other_settings_fields[] = array(
@@ -640,7 +640,7 @@ class GF_Chip extends GFPaymentAddOn {
 			'label'     => esc_html__( 'Miscellaneous', 'chip-for-gravity-forms' ),
 			'type'      => 'field_map',
 			'field_map' => $this->miscellaneous_info_fields(),
-			'tooltip'   => '<h6>' . esc_html__( 'Miscellaneous', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Map your Form Fields to the available listed fields.', 'chip-for-gravity-forms' ),
+			'tooltip'   => '<h6>' . esc_html__( 'Miscellaneous', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Map your form fields to the available listed fields.', 'chip-for-gravity-forms' ),
 		);
 
 		$other_settings_fields[] = array(
@@ -648,7 +648,7 @@ class GF_Chip extends GFPaymentAddOn {
 			'label'       => esc_html__( 'Cancel URL', 'chip-for-gravity-forms' ),
 			'type'        => 'text',
 			'placeholder' => 'https://example.com/pages',
-			'tooltip'     => '<h6>' . esc_html__( 'Cancel URL', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Redirect to custom URL in the event of cancellation. Leaving blank will redirect back to form page in the event of cancellation. Note: You can set success behavior by setting confirmation redirect.', 'chip-for-gravity-forms' ),
+			'tooltip'     => '<h6>' . esc_html__( 'Cancel URL', 'chip-for-gravity-forms' ) . '</h6>' . esc_html__( 'Redirect to a custom URL when the customer cancels. Leaving this blank will redirect back to the form page. Note: You can set success behavior by configuring the confirmation redirect.', 'chip-for-gravity-forms' ),
 		);
 
 		$other_settings_fields[] = $conditional_logic;
@@ -866,13 +866,13 @@ class GF_Chip extends GFPaymentAddOn {
 		gform_update_meta( $entry_id, 'chip_payment_id', rgar( $payment, 'id' ), rgar( $form, 'id' ) );
 
 		// Add note.
-		$note  = esc_html__( 'Customer redirected to payment page. ', 'chip-for-gravity-forms' );
+		$note  = esc_html__( 'Customer was redirected to the payment page. ', 'chip-for-gravity-forms' );
 		$note .= esc_html__( 'URL: ', 'chip-for-gravity-forms' ) . $payment['checkout_url'];
 		$this->add_note( $entry['id'], $note, 'success' );
 
 		// Add is test note.
 		if ( true === $payment['is_test'] ) {
-			$note = __( 'This is test environment where payment status is simulated.', 'chip-for-gravity-forms' );
+			$note = __( 'This is a test environment where payment status is simulated.', 'chip-for-gravity-forms' );
 			$this->add_note( $entry['id'], $note, 'error' );
 		}
 
@@ -1043,13 +1043,13 @@ class GF_Chip extends GFPaymentAddOn {
 		$entry_id = $callback_action['entry_id'];
 		$entry    = GFAPI::get_entry( $entry_id );
 		$url      = rgar( $entry, 'source_url' );
-		$message  = __( '. Payment failed. ', 'chip-for-gravity-forms' );
+		$message  = __( 'Payment failed. ', 'chip-for-gravity-forms' );
 
 		if ( 'complete_payment' === $callback_action['type'] ) {
 			$entry_id = $callback_action['entry_id'];
 			$form_id  = $entry['form_id'];
 
-			$message = __( '. Payment successful. ', 'chip-for-gravity-forms' );
+			$message = __( 'Payment successful. ', 'chip-for-gravity-forms' );
 			$url     = $this->get_confirmation_url( $entry, $form_id );
 		} else {
 			$submission_feed = $this->get_payment_feed( $entry );
@@ -1068,7 +1068,7 @@ class GF_Chip extends GFPaymentAddOn {
 			'<a href="%1$s">%2$s</a>%3$s',
 			esc_url( $url ),
 			esc_html__( 'Click here', 'chip-for-gravity-forms' ),
-			esc_html__( ' to redirect confirmation page', 'chip-for-gravity-forms' )
+			esc_html__( ' to redirect to the confirmation page', 'chip-for-gravity-forms' )
 		);
 
 		// Redirect user automatically.
