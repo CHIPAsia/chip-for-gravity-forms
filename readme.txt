@@ -1,7 +1,7 @@
 === CHIP for Gravity Forms ===
 Contributors: chipasia, wanzulnet
 Tags: chip
-Requires at least: 6.0
+Requires at least: 6.3
 Tested up to: 6.9
 Stable tag: 1.2.0
 Requires PHP: 7.4
@@ -32,7 +32,7 @@ CHIP is a payment and business solutions platform that allows you to securely se
 
 = Minimum Requirements =
 
-* WordPress 6.0 or greater
+* WordPress 6.3 or greater
 
 = Automatic installation =
 
