@@ -506,6 +506,47 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Resolves CHIP credentials and optional settings for the given feed.
+	 *
+	 * @param array $feed Feed config.
+	 * @return array Keys: secret_key, brand_id, due_strict, due_timing, refund.
+	 */
+	public function get_credentials_for_feed( $feed ) {
+		$configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global' );
+
+		$secret_key = '';
+		$brand_id   = '';
+		$due_strict = '';
+		$due_timing = 60;
+		$refund     = false;
+
+		$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
+		if ( $gf_global_settings ) {
+			$secret_key = rgar( $gf_global_settings, 'secret_key' );
+			$brand_id   = rgar( $gf_global_settings, 'brand_id' );
+			$due_strict = rgar( $gf_global_settings, 'due_strict' );
+			$due_timing = rgar( $gf_global_settings, 'due_strict_timing', 60 );
+			$refund     = rgar( $gf_global_settings, 'enable_refund', false );
+		}
+
+		if ( 'form' === $configuration_type ) {
+			$secret_key = rgars( $feed, 'meta/secret_key' );
+			$brand_id   = rgars( $feed, 'meta/brand_id' );
+			$due_strict = rgars( $feed, 'meta/due_strict' );
+			$due_timing = rgars( $feed, 'meta/due_strict_timing', 60 );
+			$refund     = rgars( $feed, 'meta/enable_refund', false );
+		}
+
+		return array(
+			'secret_key' => $secret_key,
+			'brand_id'   => $brand_id,
+			'due_strict' => $due_strict,
+			'due_timing' => $due_timing,
+			'refund'     => $refund,
+		);
+	}
+
+	/**
 	 * Feed settings fields (configuration type, Brand ID, Secret Key, optional config, client/purchase/misc mapping).
 	 *
 	 * @return array
@@ -776,8 +817,6 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . '(): Started for entry id: #' . $entry_id );
 
-		$configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global' );
-
 		$payment_amount_location = rgars( $feed, 'meta/paymentAmount' ); // Location for payment amount.
 		$name_location           = rgars( $feed, 'meta/clientInformation_full_name' ); // Location for buyer name.
 		$email_location          = rgars( $feed, 'meta/clientInformation_email' ); // Location for buyer email address.
@@ -834,20 +873,11 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$client_meta_data = $this->get_chip_client_meta_data( $feed, $entry, $form );
 
-		$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
-		if ( $gf_global_settings ) {
-			$secret_key = rgar( $gf_global_settings, 'secret_key' );
-			$brand_id   = rgar( $gf_global_settings, 'brand_id' );
-			$due_strict = rgar( $gf_global_settings, 'due_strict' );
-			$due_timing = rgar( $gf_global_settings, 'due_strict_timing', 60 );
-		}
-
-		if ( 'form' === $configuration_type ) {
-			$secret_key = rgars( $feed, 'meta/secret_key' );
-			$brand_id   = rgars( $feed, 'meta/brand_id' );
-			$due_strict = rgars( $feed, 'meta/due_strict' );
-			$due_timing = rgars( $feed, 'meta/due_strict_timing', 60 );
-		}
+		$credentials = $this->get_credentials_for_feed( $feed );
+		$secret_key  = $credentials['secret_key'];
+		$brand_id    = $credentials['brand_id'];
+		$due_strict  = $credentials['due_strict'];
+		$due_timing  = $credentials['due_timing'];
 
 		$chip = GF_CHIP_API::get_instance( $secret_key, $brand_id );
 
@@ -1009,18 +1039,9 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . "(): Entry ID #$entry_id is set to Feed ID #" . $submission_feed['id'] );
 
-		$configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global' );
-
-		$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
-		if ( $gf_global_settings ) {
-			$secret_key = rgar( $gf_global_settings, 'secret_key' );
-			$brand_id   = rgar( $gf_global_settings, 'brand_id' );
-		}
-
-		if ( 'form' === $configuration_type ) {
-			$secret_key = rgars( $submission_feed, 'meta/secret_key' );
-			$brand_id   = rgars( $submission_feed, 'meta/brand_id' );
-		}
+		$credentials = $this->get_credentials_for_feed( $submission_feed );
+		$secret_key  = $credentials['secret_key'];
+		$brand_id    = $credentials['brand_id'];
 
 		$chip = GF_CHIP_API::get_instance( $secret_key, $brand_id );
 
@@ -1102,21 +1123,12 @@ class GF_Chip extends GFPaymentAddOn {
 
 			$action = $this->build_callback_action_from_webhook_payload( $payload, $entry_id );
 		} else {
-			$entry              = GFAPI::get_entry( $entry_id );
-			$submission_feed    = $this->get_payment_feed( $entry );
-			$configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global' );
-			$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
-			$secret_key         = '';
-			$brand_id           = '';
-			if ( $gf_global_settings ) {
-				$secret_key = rgar( $gf_global_settings, 'secret_key' );
-				$brand_id   = rgar( $gf_global_settings, 'brand_id' );
-			}
-			if ( 'form' === $configuration_type ) {
-				$secret_key = rgars( $submission_feed, 'meta/secret_key' );
-				$brand_id   = rgars( $submission_feed, 'meta/brand_id' );
-			}
-			$chip         = GF_CHIP_API::get_instance( $secret_key, $brand_id );
+			$entry           = GFAPI::get_entry( $entry_id );
+			$submission_feed = $this->get_payment_feed( $entry );
+			$credentials     = $this->get_credentials_for_feed( $submission_feed );
+			$secret_key      = $credentials['secret_key'];
+			$brand_id        = $credentials['brand_id'];
+			$chip            = GF_CHIP_API::get_instance( $secret_key, $brand_id );
 			$chip_payment = $chip->get_payment( $payment_id );
 			$action       = $this->build_callback_action_from_chip_payment( $payment_id, $entry_id, $chip_payment );
 		}
@@ -1278,19 +1290,10 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . "(): Attempting to cancel payment #$payment_id for entry #$entry_id" );
 
-		$submission_feed    = $this->get_payment_feed( $entry );
-		$configuration_type = rgars( $submission_feed, 'meta/chipConfigurationType', 'global' );
-
-		$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
-		if ( $gf_global_settings ) {
-			$secret_key = rgar( $gf_global_settings, 'secret_key' );
-			$brand_id   = rgar( $gf_global_settings, 'brand_id' );
-		}
-
-		if ( 'form' === $configuration_type ) {
-			$secret_key = rgars( $submission_feed, 'meta/secret_key' );
-			$brand_id   = rgars( $submission_feed, 'meta/brand_id' );
-		}
+		$submission_feed = $this->get_payment_feed( $entry );
+		$credentials     = $this->get_credentials_for_feed( $submission_feed );
+		$secret_key      = $credentials['secret_key'];
+		$brand_id        = $credentials['brand_id'];
 
 		$chip          = GF_CHIP_API::get_instance( $secret_key, $brand_id );
 		$cancel_result = $chip->cancel_payment( $payment_id );
@@ -1395,7 +1398,7 @@ class GF_Chip extends GFPaymentAddOn {
 	public function complete_payment( &$entry, $action ) {
 		parent::complete_payment( $entry, $action );
 
-		$transaction_id = rgar( 'transaction_id', $action );
+		$transaction_id = rgar( $action, 'transaction_id' );
 		$form           = GFAPI::get_form( $entry['form_id'] );
 		$feed           = $this->get_payment_feed( $entry, $form );
 
@@ -1505,20 +1508,10 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . '(): Entry ID #' . $entry['id'] . ' is set to Feed ID #' . $feed['id'] );
 
-		$configuration_type = rgars( $feed, 'meta/chipConfigurationType', 'global' );
-
-		$gf_global_settings = get_option( 'gravityformsaddon_gravityformschip_settings' );
-		if ( $gf_global_settings ) {
-			$secret_key = rgar( $gf_global_settings, 'secret_key' );
-			$brand_id   = rgar( $gf_global_settings, 'brand_id' );
-			$refund     = rgar( $gf_global_settings, 'enable_refund', false );
-		}
-
-		if ( 'form' === $configuration_type ) {
-			$secret_key = rgars( $feed, 'meta/secret_key' );
-			$brand_id   = rgars( $feed, 'meta/brand_id' );
-			$refund     = rgars( $feed, 'meta/enable_refund', false );
-		}
+		$credentials = $this->get_credentials_for_feed( $feed );
+		$secret_key  = $credentials['secret_key'];
+		$brand_id    = $credentials['brand_id'];
+		$refund      = $credentials['refund'];
 
 		if ( '1' !== $refund ) {
 			esc_html_e( 'Refund feature has been disabled.', 'chip-for-gravity-forms' );

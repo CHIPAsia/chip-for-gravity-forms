@@ -429,9 +429,23 @@ class GF_CHIP_APITest extends TestCase {
 	}
 
 	/**
-	 * get_instance returns same instance for same (or different) args (singleton).
+	 * get_instance returns same instance for identical credentials.
 	 */
-	public function test_get_instance_is_singleton(): void {
+	public function test_get_instance_returns_same_for_identical_credentials(): void {
+		WP_Mock::userFunction( 'wp_remote_request' )->andReturn( array( 'body' => 'null' ) );
+		WP_Mock::userFunction( 'wp_remote_retrieve_body' )->andReturn( 'null' );
+		WP_Mock::userFunction( 'apply_filters' )->andReturn( true );
+
+		$a = GF_CHIP_API::get_instance( 'sk1', 'brand1' );
+		$b = GF_CHIP_API::get_instance( 'sk1', 'brand1' );
+
+		$this->assertSame( $a, $b );
+	}
+
+	/**
+	 * get_instance returns different instances for different credentials.
+	 */
+	public function test_get_instance_returns_different_for_different_credentials(): void {
 		WP_Mock::userFunction( 'wp_remote_request' )->andReturn( array( 'body' => 'null' ) );
 		WP_Mock::userFunction( 'wp_remote_retrieve_body' )->andReturn( 'null' );
 		WP_Mock::userFunction( 'apply_filters' )->andReturn( true );
@@ -439,6 +453,51 @@ class GF_CHIP_APITest extends TestCase {
 		$a = GF_CHIP_API::get_instance( 'sk1', 'brand1' );
 		$b = GF_CHIP_API::get_instance( 'sk2', 'brand2' );
 
-		$this->assertSame( $a, $b );
+		$this->assertNotSame( $a, $b );
+	}
+
+	/**
+	 * get_payment returns null when wp_remote_request returns WP_Error.
+	 */
+	public function test_get_payment_returns_null_on_wp_error(): void {
+		WP_Mock::userFunction( 'wp_remote_request' )
+			->once()
+			->andReturn( new \WP_Error( 'http_request_failed', 'Connection error' ) );
+
+		WP_Mock::userFunction( 'apply_filters' )
+			->with( 'gf_chip_sslverify', true )
+			->andReturn( true );
+
+		WP_Mock::userFunction( 'is_wp_error' )
+			->andReturnUsing( function ( $thing ) {
+				return $thing instanceof \WP_Error;
+			} );
+
+		$api = GF_CHIP_API::get_instance( 'test_secret', 'test_brand' );
+		$this->assertNull( $api->get_payment( 'pay_1' ) );
+	}
+
+	/**
+	 * get_payment returns null when HTTP response code is not 2xx.
+	 */
+	public function test_get_payment_returns_null_on_non_2xx(): void {
+		WP_Mock::userFunction( 'wp_remote_request' )
+			->once()
+			->andReturn( array( 'response' => array( 'code' => 500 ), 'body' => 'server error' ) );
+
+		WP_Mock::userFunction( 'apply_filters' )
+			->with( 'gf_chip_sslverify', true )
+			->andReturn( true );
+
+		WP_Mock::userFunction( 'is_wp_error' )
+			->andReturn( false );
+
+		WP_Mock::userFunction( 'wp_remote_retrieve_response_code' )
+			->andReturnUsing( function ( $response ) {
+				return isset( $response['response']['code'] ) ? $response['response']['code'] : 200;
+			} );
+
+		$api = GF_CHIP_API::get_instance( 'test_secret', 'test_brand' );
+		$this->assertNull( $api->get_payment( 'pay_1' ) );
 	}
 }
