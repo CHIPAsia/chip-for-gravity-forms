@@ -10,6 +10,9 @@ test_stub.php
 /dist/
 /build/
 
+# WordPress.org SVN assets (deployed separately)
+.wordpress-org/
+
 # Composer and PHPUnit
 /vendor/
 .phpunit.cache
