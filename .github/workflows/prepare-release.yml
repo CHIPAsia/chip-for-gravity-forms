@@ -58,6 +58,9 @@ jobs:
         id: prev_tag
         run: |
           PREVIOUS_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1 || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git tag -l 'gravity-forms-upload-v*' --sort=-v:refname | head -n 1 || echo "")
+          fi
           echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
           echo "📎 Previous tag: ${PREVIOUS_TAG:-none}"
 

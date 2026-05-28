@@ -53,14 +53,17 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 == Changelog ==
 
 = 1.3.0 2026-05-28 =
-* Added - User confirmation prompt when processing refunds to prevent accidental actions.
-* Added - Enhanced logging functionality to help with troubleshooting and system monitoring.
-* Fixed - Permission issues and errors that prevented specific application files from being copied or accessed.
-* Fixed - A bug that caused callback processing to fail.
-* Changed - Updated compatibility for WordPress 7.0 and Gravity Forms 2.9.
-* Changed - Improved security by implementing public key verification.
-* Changed - General stability improvements and refined English translations across the interface.
-* Removed - Unnecessary image from the global configuration settings page for a cleaner interface.
+* Fixed - API singleton returning wrong credentials when a site uses both Global and Form Configuration with different keys.
+* Fixed - `rgar()` argument order in `complete_payment()` that broke delayed feed triggering after payment completion.
+* Added - `WP_Error` and HTTP status code handling in the API client for robust error handling.
+* Added - `get_credentials_for_feed()` helper to centralize credential resolution across payment flows.
+* Added - Unit tests for `GF_Chip` core logic (credentials, callback actions, timezone).
+* Added - PHP 8.5 to the CI compatibility matrix.
+* Added - CONTRIBUTING.md and CLAUDE.md for developer documentation.
+* Added - `.wordpress-org/` assets directory for WordPress.org plugin page banners and screenshots.
+* Changed - Bumped "Tested up to" to WordPress 7.0.
+* Changed - Modernized CI/CD workflows: deploy.yml, prepare-release.yml, pr-summary.yml.
+* Removed - composer.lock from git tracking to reduce merge conflicts.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
 

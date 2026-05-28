@@ -5,7 +5,7 @@
  * Description: CHIP - Digital Finance Platform
  * Version: 1.3.0
  * Author: Chip In Sdn Bhd
- * Author URI: http://www.chip-in.asia
+ * Author URI: https://www.chip-in.asia
  *
  * Copyright: © 2026 CHIP
  * License: GNU General Public License v3.0
