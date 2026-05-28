@@ -26,16 +26,41 @@ if [[ ! -f .wp-env.json ]]; then
   exit 1
 fi
 
+echo "==> Preparing clean plugin directory..."
+mkdir -p "dist/${PLUGIN_SLUG}"
+git archive HEAD | tar -x -C "dist/${PLUGIN_SLUG}"
+echo "✅ Clean plugin folder prepared"
+
+echo ""
+echo "==> Updating .wp-env.json to use clean build..."
+cp .wp-env.json .wp-env.json.bak
+python3 -c "
+import json, os
+slug = '${PLUGIN_SLUG}'
+with open('.wp-env.json', 'r') as f:
+    data = json.load(f)
+old_key = 'wp-content/plugins/' + slug
+data['mappings'].pop(old_key, None)
+data['mappings']['wp-content/plugins/' + slug] = os.path.abspath('dist/' + slug)
+with open('.wp-env.json', 'w') as f:
+    json.dump(data, f, indent='\t')
+    f.write('\n')
+"
+
 echo "==> Starting wp-env (WordPress + Plugin Check)..."
 npx --yes @wordpress/env start
 
 echo ""
 echo "==> Running WordPress Plugin Check for ${PLUGIN_SLUG}..."
 npx --yes @wordpress/env run cli wp plugin activate "$PLUGIN_SLUG"
-npx --yes @wordpress/env run cli wp plugin check "$PLUGIN_SLUG" --format=table --exclude-directories=dist,.github
+npx --yes @wordpress/env run cli wp plugin check "$PLUGIN_SLUG" --format=table --exclude-directories=vendor,node_modules
 
 echo ""
 echo "==> Stopping wp-env..."
 npx --yes @wordpress/env stop
+
+echo "==> Restoring .wp-env.json..."
+mv .wp-env.json.bak .wp-env.json
+rm -rf "dist/${PLUGIN_SLUG}"
 
 echo "==> Plugin check finished."
