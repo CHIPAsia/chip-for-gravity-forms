@@ -89,6 +89,26 @@ if ( ! function_exists( 'gform_get_meta' ) ) {
 	}
 }
 
+// WordPress HTTP API stubs used by class-gf-chip-api.php.
+if ( ! class_exists( 'WP_Error' ) ) {
+	class WP_Error {
+		public function __construct( $code = '', $message = '', $data = '' ) {
+		}
+	}
+}
+
+if ( ! function_exists( 'is_wp_error' ) ) {
+	function is_wp_error( $thing ) {
+		return $thing instanceof WP_Error;
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_response_code' ) ) {
+	function wp_remote_retrieve_response_code( $response ) {
+		return isset( $response['response']['code'] ) ? (int) $response['response']['code'] : 200;
+	}
+}
+
 // Minimal stubs so class-gf-chip.php can load without the full Gravity Forms framework.
 if ( ! class_exists( 'GFForms' ) ) {
 	class GFForms {
