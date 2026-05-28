@@ -130,6 +130,3 @@ jobs:
         with:
           build-dir: './build/chip-for-gravity-forms'
           exclude-directories: 'vendor,node_modules'
-        # wp-env start can fail transiently in CI due to Docker networking/timeouts.
-        # Local plugin check (./scripts/run-wp-plugin-check.sh) passes clean.
-        continue-on-error: true
