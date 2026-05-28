@@ -8,6 +8,7 @@
 # Exclude dev files
 *.md export-ignore
 CLAUDE.md export-ignore
+.claude/ export-ignore
 node_modules/ export-ignore
 vendor/ export-ignore
 composer.lock export-ignore
