@@ -9,12 +9,19 @@ namespace GravityFormsCHIP\Tests\Unit;
 
 use GF_CHIP_Bootstrap;
 use WP_Mock;
-use WP_Mock\Tools\TestCase;
+use PHPUnit\Framework\TestCase;
 
 /**
  * @covers \GF_CHIP_Bootstrap
  */
 class GF_CHIP_BootstrapTest extends TestCase {
+
+	/**
+	 * Tear down WP_Mock after each test.
+	 */
+	public function tearDown(): void {
+		WP_Mock::tearDown();
+	}
 
 	/**
 	 * gf_chip_setting_link adds a Settings link with correct URL and text.

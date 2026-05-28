@@ -9,7 +9,7 @@ namespace GravityFormsCHIP\Tests\Unit;
 
 use GF_Chip;
 use WP_Mock;
-use WP_Mock\Tools\TestCase;
+use PHPUnit\Framework\TestCase;
 
 /**
  * @covers \GF_Chip
@@ -20,11 +20,18 @@ class GF_ChipTest extends TestCase {
 	 * Reset API singleton before each test.
 	 */
 	public function setUp(): void {
-		parent::setUp();
+		WP_Mock::setUp();
 		$ref  = new \ReflectionClass( \GF_CHIP_API::class );
 		$prop = $ref->getProperty( 'instances' );
 		$prop->setAccessible( true );
 		$prop->setValue( null, array() );
+	}
+
+	/**
+	 * Tear down WP_Mock after each test.
+	 */
+	public function tearDown(): void {
+		WP_Mock::tearDown();
 	}
 
 	/**

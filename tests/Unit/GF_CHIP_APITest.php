@@ -9,7 +9,7 @@ namespace GravityFormsCHIP\Tests\Unit;
 
 use GF_CHIP_API;
 use WP_Mock;
-use WP_Mock\Tools\TestCase;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Purchase status values match CHIP API PurchaseStatus enum:
@@ -23,7 +23,14 @@ class GF_CHIP_APITest extends TestCase {
 	 * Reset API singleton before each test so mocks apply to a fresh instance.
 	 */
 	public function setUp(): void {
-		parent::setUp();
+		WP_Mock::setUp();
+	}
+
+	/**
+	 * Tear down WP_Mock after each test.
+	 */
+	public function tearDown(): void {
+		WP_Mock::tearDown();
 		$ref  = new \ReflectionClass( GF_CHIP_API::class );
 		$prop = $ref->getProperty( 'instance' );
 		$prop->setAccessible( true );

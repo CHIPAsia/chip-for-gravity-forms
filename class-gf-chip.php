@@ -1129,8 +1129,8 @@ class GF_Chip extends GFPaymentAddOn {
 			$secret_key      = $credentials['secret_key'];
 			$brand_id        = $credentials['brand_id'];
 			$chip            = GF_CHIP_API::get_instance( $secret_key, $brand_id );
-			$chip_payment = $chip->get_payment( $payment_id );
-			$action       = $this->build_callback_action_from_chip_payment( $payment_id, $entry_id, $chip_payment );
+			$chip_payment    = $chip->get_payment( $payment_id );
+			$action          = $this->build_callback_action_from_chip_payment( $payment_id, $entry_id, $chip_payment );
 		}
 
 		if ( null === $action ) {
