@@ -174,8 +174,12 @@ class GF_CHIP_API {
 			)
 		);
 
+		if ( null === $response || '' === $response ) {
+			return null;
+		}
+
 		$result = json_decode( $response, true );
-		if ( ! $result ) {
+		if ( null === $result ) {
 			return null;
 		}
 

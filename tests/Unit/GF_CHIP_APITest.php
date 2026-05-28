@@ -24,6 +24,10 @@ class GF_CHIP_APITest extends TestCase {
 	 */
 	public function setUp(): void {
 		WP_Mock::setUp();
+		$ref  = new \ReflectionClass( GF_CHIP_API::class );
+		$prop = $ref->getProperty( 'instances' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, array() );
 	}
 
 	/**
@@ -31,10 +35,6 @@ class GF_CHIP_APITest extends TestCase {
 	 */
 	public function tearDown(): void {
 		WP_Mock::tearDown();
-		$ref  = new \ReflectionClass( GF_CHIP_API::class );
-		$prop = $ref->getProperty( 'instance' );
-		$prop->setAccessible( true );
-		$prop->setValue( null, null );
 	}
 
 	/**
