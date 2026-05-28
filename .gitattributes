@@ -23,6 +23,7 @@ webpack.config.js export-ignore
 .prettierrc export-ignore
 README.md export-ignore
 resources/ export-ignore
+.wordpress-org/ export-ignore
 
 # Binary files
 *.png binary
@@ -39,3 +40,4 @@ docker-compose.yml export-ignore
 Dockerfile export-ignore
 .dockerignore export-ignore
 .wp-env.json export-ignore
+.phpunit.result.cache export-ignore
