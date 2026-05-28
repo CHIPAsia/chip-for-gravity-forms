@@ -13,7 +13,7 @@ on:
           - release
   push:
     tags:
-      - 'gravity-forms-upload-v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   deploy:
@@ -43,7 +43,7 @@ jobs:
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
 
           if [ "$STAGE" = "release" ] && [ "${{ github.event_name }}" = "push" ]; then
-            VERSION=${GITHUB_REF##*/gravity-forms-upload-v}
+            VERSION=${GITHUB_REF##*/v}
           else
             VERSION=$(grep "Version:" chip-for-gravity-forms.php | head -1 | awk '{print $3}')
           fi
@@ -217,7 +217,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.vars.outputs.version }}"
-          TAG="gravity-forms-upload-v${VERSION}"
+          TAG="v${VERSION}"
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release edit "$TAG" --notes-file release_notes.md
             echo "✅ Updated existing release"
@@ -231,5 +231,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="gravity-forms-upload-v${{ steps.vars.outputs.version }}"
+          TAG="v${{ steps.vars.outputs.version }}"
           gh release upload "$TAG" chip-for-gravity-forms.zip --clobber || true

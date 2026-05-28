@@ -85,7 +85,7 @@ After running the script, review the changes, write the changelog entry, commit,
 ```bash
 git add -A
 git commit -m "Bump version to 1.3.0"
-git tag -a gravity-forms-upload-v1.3.0 -m "Release 1.3.0"
+git tag -a v1.3.0 -m "Release 1.3.0"
 git push origin main --tags
 ```
 
@@ -108,7 +108,7 @@ If you prefer not to use the script, follow this checklist:
 - [ ] Run `./vendor/bin/phpunit` and fix any failures
 - [ ] Run `phpcs --standard=phpcs.xml .` and fix any issues
 - [ ] Run `git add -A && git commit -m "Bump version to X.Y.Z"`
-- [ ] Push tag: `git tag -a gravity-forms-upload-vX.Y.Z -m "Release X.Y.Z" && git push origin gravity-forms-upload-vX.Y.Z`
+- [ ] Push tag: `git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z`
 - [ ] Verify GitHub Actions `deploy.yml` workflow succeeds
 - [ ] Verify [wordpress.org plugin page](https://wordpress.org/plugins/chip-for-gravity-forms/) shows the new version
 

@@ -72,7 +72,7 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 1. Use the **Prepare Release** GitHub Action (`workflow_dispatch`) to generate AI changelog and bump versions, or run `bash ./scripts/bump-version.sh X.Y.Z` manually.
 2. Merge the release PR.
-3. Create and push tag: `git tag -a gravity-forms-upload-vX.Y.Z -m "Release X.Y.Z" && git push origin gravity-forms-upload-vX.Y.Z`
+3. Create and push tag: `git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z`
 4. The `deploy.yml` workflow triggers automatically, deploying to WordPress.org SVN and creating a GitHub release.
 
 ## CI/CD Workflows
