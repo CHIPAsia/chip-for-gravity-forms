@@ -52,7 +52,7 @@ composer install --no-interaction --prefer-dist
 phpcs --standard=phpcs.xml .
 
 # PHP compatibility (single version)
-phpcs --standard=PHPCompatibilityWP --runtime-set testVersion 8.4 --extensions=php --ignore=vendor,node_modules,assets .
+phpcs --standard=PHPCompatibilityWP --runtime-set testVersion 8.5 --extensions=php --ignore=vendor,node_modules,assets .
 
 # Local Plugin Check (Docker)
 docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
@@ -65,7 +65,7 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 - **Do NOT add `Requires Plugins: gravityforms` header.** Gravity Forms is not on WordPress.org SVN. The `Requires Plugins` header (WP 6.5+) only works for plugins in the wordpress.org repository and would break activation.
 - **Text domain:** always `chip-for-gravity-forms`.
-- **PHP compatibility:** 7.4 through 8.4.
+- **PHP compatibility:** 7.4 through 8.5.
 - **Never call `openssl_pkey_free()`** — it is deprecated in PHP 8.0+. OpenSSL key resources are freed automatically when the variable goes out of scope.
 
 ## Release Workflow
@@ -77,7 +77,7 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 ## CI/CD Workflows
 
-- `plugin-check.yml` — runs on push/PR: build zip, PHPCompatibility matrix (7.4/8.0/8.2/8.4), PHPUnit, PHPCS, WordPress Plugin Check.
+- `plugin-check.yml` — runs on push/PR: build zip, PHPCompatibility matrix (7.4/8.0/8.2/8.5), PHPUnit, PHPCS, WordPress Plugin Check.
 - `deploy.yml` — runs on tag push: deploys to SVN (trunk + new tag), creates GitHub release with ZIP asset.
 - `prepare-release.yml` — manual: AI-generated changelog + version bump + release PR.
 - `pr-summary.yml` — auto-updates PR descriptions with AI-generated summaries.
