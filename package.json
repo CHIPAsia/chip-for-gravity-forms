@@ -1,6 +1,6 @@
 {
   "name": "chip-for-gravity-forms",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "<img src=\"./assets/logo.svg\" alt=\"drawing\" width=\"50\"/>",
   "main": "index.js",
   "scripts": {

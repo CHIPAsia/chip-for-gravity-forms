@@ -1,5 +1,15 @@
 == Changelog ==
 
+= 1.3.0 2026-05-28 =
+* Added - User confirmation prompt when processing refunds to prevent accidental actions.
+* Added - Enhanced logging functionality to help with troubleshooting and system monitoring.
+* Fixed - Permission issues and errors that prevented specific application files from being copied or accessed.
+* Fixed - A bug that caused callback processing to fail.
+* Changed - Updated compatibility for WordPress 7.0 and Gravity Forms 2.9.
+* Changed - Improved security by implementing public key verification.
+* Changed - General stability improvements and refined English translations across the interface.
+* Removed - Unnecessary image from the global configuration settings page for a cleaner interface.
+
 = 1.2.0 2026-02-20 =
 * Fixed - Global configuration (Brand ID and Secret Key) not saved when saving settings.
 * Fixed - Fatal error when GFAddon expected full path; plugin now works with Gravity Forms addon loader.

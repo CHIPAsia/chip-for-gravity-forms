@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, gravity forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.0
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -52,17 +52,15 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 
 == Changelog ==
 
-= 1.2.0 2026-02-20 =
-* Fixed - Global configuration (Brand ID and Secret Key) not saved when saving settings.
-* Fixed - Fatal error when GFAddon expected full path; plugin now works with Gravity Forms addon loader.
-* Fixed - Application files not permitted (WordPress Plugin Check compatibility).
-* Added - "Copy from global configuration" button in form feed settings when using Form Configuration.
-* Added - Account status block in form configuration to verify Brand ID and Secret Key.
-* Added - Form settings image in global CHIP description.
-* Added - Public key support: store CHIP public key by company ID when saving global or form settings; verify webhook signature when key is available and use payload directly, with fallback to get_payment.
-* Added - Per-payment lock on callback to prevent duplicate processing while allowing other payments to run in parallel.
-* Added - Refund button now requires user confirmation before processing the refund.
-* Changed - Minimum WordPress version set to 6.3.
+= 1.3.0 2026-05-28 =
+* Added - User confirmation prompt when processing refunds to prevent accidental actions.
+* Added - Enhanced logging functionality to help with troubleshooting and system monitoring.
+* Fixed - Permission issues and errors that prevented specific application files from being copied or accessed.
+* Fixed - A bug that caused callback processing to fail.
+* Changed - Updated compatibility for WordPress 7.0 and Gravity Forms 2.9.
+* Changed - Improved security by implementing public key verification.
+* Changed - General stability improvements and refined English translations across the interface.
+* Removed - Unnecessary image from the global configuration settings page for a cleaner interface.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
 
