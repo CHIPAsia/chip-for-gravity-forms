@@ -7,6 +7,8 @@
 
 # Exclude dev files
 *.md export-ignore
+CLAUDE.md export-ignore
+.claude/ export-ignore
 node_modules/ export-ignore
 vendor/ export-ignore
 composer.lock export-ignore
@@ -21,6 +23,7 @@ webpack.config.js export-ignore
 .prettierrc export-ignore
 README.md export-ignore
 resources/ export-ignore
+.wordpress-org/ export-ignore
 
 # Binary files
 *.png binary
@@ -37,3 +40,4 @@ docker-compose.yml export-ignore
 Dockerfile export-ignore
 .dockerignore export-ignore
 .wp-env.json export-ignore
+.phpunit.result.cache export-ignore

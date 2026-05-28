@@ -19,11 +19,11 @@ define( 'GF_CHIP_ROOT_URL', 'https://gate.chip-in.asia' );
 class GF_CHIP_API {
 
 	/**
-	 * Singleton instance.
+	 * Instances keyed by credential hash.
 	 *
-	 * @var GF_CHIP_API
+	 * @var array<string, GF_CHIP_API>
 	 */
-	private static $instance;
+	private static $instances = array();
 
 	/**
 	 * Secret key for API auth.
@@ -40,18 +40,19 @@ class GF_CHIP_API {
 	private $brand_id;
 
 	/**
-	 * Gets the singleton instance.
+	 * Gets an instance for the given credentials.
 	 *
 	 * @param string $secret_key Secret key.
 	 * @param string $brand_id   Brand ID.
 	 * @return GF_CHIP_API
 	 */
 	public static function get_instance( $secret_key, $brand_id ) {
-		if ( null === self::$instance ) {
-			self::$instance = new self( $secret_key, $brand_id );
+		$key = md5( (string) $secret_key . '|' . (string) $brand_id );
+		if ( ! isset( self::$instances[ $key ] ) ) {
+			self::$instances[ $key ] = new self( $secret_key, $brand_id );
 		}
 
-		return self::$instance;
+		return self::$instances[ $key ];
 	}
 
 	/**
@@ -173,8 +174,12 @@ class GF_CHIP_API {
 			)
 		);
 
+		if ( null === $response || '' === $response ) {
+			return null;
+		}
+
 		$result = json_decode( $response, true );
-		if ( ! $result ) {
+		if ( null === $result ) {
 			return null;
 		}
 
@@ -204,6 +209,15 @@ class GF_CHIP_API {
 				'body'      => $params,
 			)
 		);
+
+		if ( is_wp_error( $wp_request ) ) {
+			return null;
+		}
+
+		$response_code = wp_remote_retrieve_response_code( $wp_request );
+		if ( $response_code < 200 || $response_code >= 300 ) {
+			return null;
+		}
 
 		$response = wp_remote_retrieve_body( $wp_request );
 

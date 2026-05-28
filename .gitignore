@@ -2,6 +2,7 @@
 
 package-lock.json
 yarn.lock
+composer.lock
 /node_modules/
 
 test_stub.php
@@ -9,8 +10,16 @@ test_stub.php
 # Local plugin-check / release artifacts
 /dist/
 /build/
+ci-build/
+
+# WordPress.org SVN assets (deployed separately)
+.wordpress-org/
 
 # Composer and PHPUnit
 /vendor/
 .phpunit.cache
 .phpunit.result.cache
+
+# Release workflow temporary files
+diff.txt
+changelog_entry.md
