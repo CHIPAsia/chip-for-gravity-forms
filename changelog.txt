@@ -1,5 +1,18 @@
 == Changelog ==
 
+= 1.3.0 2026-05-28 =
+* Fixed - API singleton returning wrong credentials when a site uses both Global and Form Configuration with different keys.
+* Fixed - `rgar()` argument order in `complete_payment()` that broke delayed feed triggering after payment completion.
+* Added - `WP_Error` and HTTP status code handling in the API client for robust error handling.
+* Added - `get_credentials_for_feed()` helper to centralize credential resolution across payment flows.
+* Added - Unit tests for `GF_Chip` core logic (credentials, callback actions, timezone).
+* Added - PHP 8.5 to the CI compatibility matrix.
+* Added - CONTRIBUTING.md and CLAUDE.md for developer documentation.
+* Added - `.wordpress-org/` assets directory for WordPress.org plugin page banners and screenshots.
+* Changed - Bumped "Tested up to" to WordPress 7.0.
+* Changed - Modernized CI/CD workflows: deploy.yml, prepare-release.yml, pr-summary.yml.
+* Removed - composer.lock from git tracking to reduce merge conflicts.
+
 = 1.2.0 2026-02-20 =
 * Fixed - Global configuration (Brand ID and Secret Key) not saved when saving settings.
 * Fixed - Fatal error when GFAddon expected full path; plugin now works with Gravity Forms addon loader.

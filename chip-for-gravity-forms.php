@@ -3,9 +3,9 @@
  * Plugin Name: CHIP for Gravity Forms
  * Plugin URI: https://wordpress.org/plugins/chip-for-gravity-forms/
  * Description: CHIP - Digital Finance Platform
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: Chip In Sdn Bhd
- * Author URI: http://www.chip-in.asia
+ * Author URI: https://www.chip-in.asia
  *
  * Copyright: © 2026 CHIP
  * License: GNU General Public License v3.0
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || die();
 
-define( 'GF_CHIP_MODULE_VERSION', 'v1.2.0' );
+define( 'GF_CHIP_MODULE_VERSION', 'v1.3.0' );
 define( 'GF_CHIP_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'GF_CHIP_PLUGIN_FILE', __FILE__ );
 

@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, gravity forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.0
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -52,17 +52,18 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 
 == Changelog ==
 
-= 1.2.0 2026-02-20 =
-* Fixed - Global configuration (Brand ID and Secret Key) not saved when saving settings.
-* Fixed - Fatal error when GFAddon expected full path; plugin now works with Gravity Forms addon loader.
-* Fixed - Application files not permitted (WordPress Plugin Check compatibility).
-* Added - "Copy from global configuration" button in form feed settings when using Form Configuration.
-* Added - Account status block in form configuration to verify Brand ID and Secret Key.
-* Added - Form settings image in global CHIP description.
-* Added - Public key support: store CHIP public key by company ID when saving global or form settings; verify webhook signature when key is available and use payload directly, with fallback to get_payment.
-* Added - Per-payment lock on callback to prevent duplicate processing while allowing other payments to run in parallel.
-* Added - Refund button now requires user confirmation before processing the refund.
-* Changed - Minimum WordPress version set to 6.3.
+= 1.3.0 2026-05-28 =
+* Fixed - API singleton returning wrong credentials when a site uses both Global and Form Configuration with different keys.
+* Fixed - `rgar()` argument order in `complete_payment()` that broke delayed feed triggering after payment completion.
+* Added - `WP_Error` and HTTP status code handling in the API client for robust error handling.
+* Added - `get_credentials_for_feed()` helper to centralize credential resolution across payment flows.
+* Added - Unit tests for `GF_Chip` core logic (credentials, callback actions, timezone).
+* Added - PHP 8.5 to the CI compatibility matrix.
+* Added - CONTRIBUTING.md and CLAUDE.md for developer documentation.
+* Added - `.wordpress-org/` assets directory for WordPress.org plugin page banners and screenshots.
+* Changed - Bumped "Tested up to" to WordPress 7.0.
+* Changed - Modernized CI/CD workflows: deploy.yml, prepare-release.yml, pr-summary.yml.
+* Removed - composer.lock from git tracking to reduce merge conflicts.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
 
