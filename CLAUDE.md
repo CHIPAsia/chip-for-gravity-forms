@@ -77,8 +77,8 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 ## CI/CD Workflows
 
-- `plugin-check.yml` — runs on push/PR: build zip, PHPCompatibility matrix (7.4/8.0/8.2/8.5), PHPUnit, PHPCS, WordPress Plugin Check.
-- `deploy.yml` — runs on tag push: deploys to SVN (trunk + new tag), creates GitHub release with ZIP asset.
+- `plugin-check.yml` — runs on push/PR: build zip, PHPCompatibility matrix (7.4/8.0/8.2/8.4/8.5), PHPUnit, PHPCS, WordPress Plugin Check.
+- `deploy.yml` — runs on tag push or manual `workflow_dispatch`: deploys to SVN (trunk + new tag), creates GitHub release with ZIP asset.
 - `prepare-release.yml` — manual: AI-generated changelog + version bump + release PR.
 - `pr-summary.yml` — auto-updates PR descriptions with AI-generated summaries.
 - `release-zip.yml` — runs on GitHub release creation: attaches ZIP asset.
@@ -86,5 +86,5 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 ## File Conventions
 
 - `.gitattributes` uses `export-ignore` to exclude dev files from release zips.
-- `.wordpress-org/` contains banner/icon/screenshot assets for the WordPress.org plugin page. It is gitignored but deployed via `deploy.yml` to SVN `assets/`.
+- `.wordpress-org/` contains banner/icon/screenshot assets for the WordPress.org plugin page. It is tracked by Git (not ignored) and deployed via `deploy.yml` to SVN `assets/`.
 - `phpcs.xml` excludes `tests/` from linting; test files are checked by PHPUnit only.
