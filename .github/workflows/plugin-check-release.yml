@@ -1,0 +1,37 @@
+name: WordPress Plugin Check (Release)
+
+on:
+  push:
+    tags: [ '**' ]
+  release:
+    types: [ published ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin-check:
+    name: Plugin Check
+    runs-on: ubuntu-latest
+    # TODO: Re-enable strict checking once upstream is fixed.
+    # Blocked by https://github.com/WordPress/plugin-check-action/issues/579
+    # (wp-env silently fails to start on new ubuntu-24.04 runner images)
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Prepare plugin folder for CI
+        run: |
+          mkdir -p ci-build/chip-for-gravity-forms
+          git archive HEAD | tar -x -C ci-build/chip-for-gravity-forms
+          # .wp-env.json is export-ignored but needed by plugin-check action to start wp-env.
+          cp .wp-env.json ci-build/chip-for-gravity-forms/
+
+      - name: Run Plugin Check
+        uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: './ci-build/chip-for-gravity-forms'
+          exclude-directories: 'vendor,node_modules'
