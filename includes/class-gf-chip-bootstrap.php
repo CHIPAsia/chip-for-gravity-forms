@@ -19,6 +19,7 @@ class GF_CHIP_Bootstrap {
 
 		require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-api.php';
 		require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-schedule.php';
+		require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-renewals.php';
 		require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip.php';
 
 		GFAddOn::register( 'GF_Chip' );
