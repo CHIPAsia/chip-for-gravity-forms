@@ -89,6 +89,11 @@ if ( ! function_exists( 'gform_get_meta' ) ) {
 	}
 }
 
+if ( ! function_exists( 'gform_delete_meta' ) ) {
+	function gform_delete_meta( $entry_id, $meta_key ) {
+	}
+}
+
 // WordPress HTTP API stubs used by includes/class-gf-chip-api.php.
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {
