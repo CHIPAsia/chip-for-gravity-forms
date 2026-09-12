@@ -111,6 +111,21 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Registers admin-side components.
+	 *
+	 * Only the navigation filter is added here; the page renders through the
+	 * callback registered with it, so nothing in the admin runs on the front
+	 * end.
+	 *
+	 * @return void
+	 */
+	public function init_admin() {
+		parent::init_admin();
+
+		GF_Chip_Subscriptions_Page::register();
+	}
+
+	/**
 	 * Runs before init. Registers actions for thank-you page and AJAX handlers.
 	 */
 	public function pre_init() {
