@@ -11,15 +11,15 @@ Official CHIP payment gateway add-on for Gravity Forms. Extends `GFPaymentAddOn`
 The plugin is a Gravity Forms Payment Add-On with four layers:
 
 1. **Entry point** (`chip-for-gravity-forms.php`): defines constants (`GF_CHIP_MODULE_VERSION`, `GF_CHIP_PLUGIN_PATH`), hooks `gform_loaded` to bootstrap.
-2. **Bootstrap** (`class-gf-chip-bootstrap.php`): registers the addon via `GFAddOn::register()`, adds Settings link on plugin list.
-3. **Main addon** (`class-gf-chip.php`): extends `GFPaymentAddOn`. Implements:
+2. **Bootstrap** (`includes/class-gf-chip-bootstrap.php`): registers the addon via `GFAddOn::register()`, adds Settings link on plugin list.
+3. **Main addon** (`includes/class-gf-chip.php`): extends `GFPaymentAddOn`. Implements:
    - Global settings (Brand ID, Secret Key, optional refund/due timing)
    - Feed settings (per-form credentials, client metadata mapping, cancel URL)
    - Payment redirect (`redirect_url`) — builds CHIP purchase payload, stores `chip_payment_id` in entry meta
    - Callback handling (`callback`/`post_callback`) — GET (browser redirect) or POST (webhook with X-Signature verification)
    - Refund AJAX handler (`chip_refund_payment`)
    - Thank-you page validation (`maybe_thankyou_page`) — hash-based confirmation URL
-4. **API client** (`class-gf-chip-api.php`): per-credential-singleton HTTP client. All instances are keyed by `md5(secret_key + '|' + brand_id)` to prevent cross-contamination.
+4. **API client** (`includes/class-gf-chip-api.php`): per-credential-singleton HTTP client. All instances are keyed by `md5(secret_key + '|' + brand_id)` to prevent cross-contamination.
 
 ### Credential Resolution
 

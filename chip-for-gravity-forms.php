@@ -22,6 +22,6 @@ define( 'GF_CHIP_MODULE_VERSION', 'v1.3.0' );
 define( 'GF_CHIP_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'GF_CHIP_PLUGIN_FILE', __FILE__ );
 
-require_once GF_CHIP_PLUGIN_PATH . 'class-gf-chip-bootstrap.php';
+require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-bootstrap.php';
 
 add_action( 'gform_loaded', array( 'GF_CHIP_Bootstrap', 'load_addon' ), 5 );
