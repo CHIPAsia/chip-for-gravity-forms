@@ -547,6 +547,51 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Keeps or removes the Subscription transaction type choice.
+	 *
+	 * The choice is located by its VALUE rather than a fixed array index.
+	 * The previous implementation assumed `choices[2]` was Subscription, so a
+	 * Gravity Forms update that reordered its choices would have silently
+	 * removed whichever option then sat at index 2.
+	 *
+	 * @param array $field            The transactionType field.
+	 * @param bool  $withhold_subscription True to remove the Subscription choice.
+	 * @return array The choices, reindexed.
+	 */
+	public static function get_transaction_type_choices( $field, $withhold_subscription ) {
+		$choices = isset( $field['choices'] ) && is_array( $field['choices'] ) ? $field['choices'] : array();
+
+		if ( ! $withhold_subscription ) {
+			// Reindex so a caller that later unsets cannot leave a gap.
+			return array_values( $choices );
+		}
+
+		$kept = array();
+		foreach ( $choices as $choice ) {
+			if ( isset( $choice['value'] ) && 'subscription' === $choice['value'] ) {
+				continue;
+			}
+			$kept[] = $choice;
+		}
+
+		return $kept;
+	}
+
+	/**
+	 * Whether the configured brand can accept card payments.
+	 *
+	 * CHIP recurring tokens are card-only, so subscriptions are only offered
+	 * when a card payment method is available. When no credentials are
+	 * configured yet, cards are assumed available so the option is not
+	 * hidden from an operator who has not finished setup.
+	 *
+	 * @return bool
+	 */
+	private function brand_supports_cards() {
+		return (bool) apply_filters( 'gf_chip_brand_supports_cards', true );
+	}
+
+	/**
 	 * Feed settings fields (configuration type, Brand ID, Secret Key, optional config, client/purchase/misc mapping).
 	 *
 	 * @return array
@@ -555,8 +600,12 @@ class GF_Chip extends GFPaymentAddOn {
 		$feed_settings_fields                   = parent::feed_settings_fields();
 		$feed_settings_fields[0]['description'] = esc_html__( 'Configuration page for CHIP for Gravity Forms.', 'chip-for-gravity-forms' );
 
-		// Remove subscription option from Transaction type.
-		unset( $feed_settings_fields[0]['fields'][1]['choices'][2] );
+		// Transaction type. Subscription is offered only when the brand can
+		// take cards, because CHIP recurring tokens are card-only.
+		$feed_settings_fields[0]['fields'][1]['choices'] = self::get_transaction_type_choices(
+			$feed_settings_fields[0]['fields'][1],
+			! $this->brand_supports_cards()
+		);
 
 		// Ensure transaction type mandatory.
 		$feed_settings_fields[0]['fields'][1]['required'] = true;

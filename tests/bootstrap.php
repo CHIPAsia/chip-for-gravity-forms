@@ -142,6 +142,76 @@ if ( ! class_exists( 'GFPaymentAddOn' ) ) {
 			return null;
 		}
 
+		/**
+		 * Mirrors the shape Gravity Forms core returns from
+		 * GFPaymentAddOn::feed_settings_fields() for its first two sections:
+		 * the transactionType field (with the Subscription choice) and the
+		 * Subscription Settings section it gates.
+		 *
+		 * Core's own version is in includes/addon/class-gf-payment-addon.php.
+		 * Kept minimal — only the parts GF_Chip::feed_settings_fields() reads.
+		 *
+		 * @return array
+		 */
+		public function feed_settings_fields() {
+			return array(
+				array(
+					'description' => '',
+					'fields'      => array(
+						array(
+							'name'     => 'feedName',
+							'label'    => 'Name',
+							'type'     => 'text',
+							'required' => true,
+						),
+						array(
+							'name'     => 'transactionType',
+							'label'    => 'Transaction Type',
+							'type'     => 'select',
+							'onchange' => "jQuery(this).parents('form').submit();",
+							'choices'  => array(
+								array(
+									'label' => 'Select a transaction type',
+									'value' => '',
+								),
+								array(
+									'label' => 'Products and Services',
+									'value' => 'product',
+								),
+								array(
+									'label' => 'Subscription',
+									'value' => 'subscription',
+								),
+							),
+						),
+					),
+				),
+				array(
+					'title'      => 'Subscription Settings',
+					'dependency' => array(
+						'field'  => 'transactionType',
+						'values' => array( 'subscription' ),
+					),
+					'fields'     => array(
+						array(
+							'name'    => 'recurringAmount',
+							'label'   => 'Recurring Amount',
+							'type'    => 'select',
+							'choices' => array(),
+						),
+					),
+				),
+				array(
+					'title'  => 'Products and Services',
+					'fields' => array(),
+				),
+				array(
+					'title'  => 'Other Settings',
+					'fields' => array(),
+				),
+			);
+		}
+
 		public function log_debug( $message ) {
 		}
 
