@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents working in this repository.
 
 ## Project Overview
 
@@ -70,17 +70,17 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 ## Release Workflow
 
-1. Use the **Prepare Release** GitHub Action (`workflow_dispatch`) to generate AI changelog and bump versions, or run `bash ./scripts/bump-version.sh X.Y.Z` manually.
+1. Use the **Prepare Release** GitHub Action (`workflow_dispatch`, requires a `version` input such as `1.3.0`) to generate an AI changelog and bump versions, or run `bash ./scripts/bump-version.sh X.Y.Z` manually.
 2. Merge the release PR.
 3. Create and push tag: `git tag -a vX.Y.Z -m "Release X.Y.Z" && git push origin vX.Y.Z`
 4. The `deploy.yml` workflow triggers automatically, deploying to WordPress.org SVN and creating a GitHub release.
 
 ## CI/CD Workflows
 
-- `plugin-check.yml` — runs on push/PR: build zip, PHPCompatibility matrix (7.4/8.0/8.2/8.4/8.5), PHPUnit, PHPCS, WordPress Plugin Check.
+- `plugin-check.yml` — runs on push to `main` and on PRs: PHPCompatibility matrix (7.4/8.0/8.2/8.4/8.5), PHPUnit, PHPCS.
+- `plugin-check-main.yml` — runs on push to `main` only: WordPress Plugin Check (with `continue-on-error`, see the TODO in the workflow).
 - `deploy.yml` — runs on tag push or manual `workflow_dispatch`: deploys to SVN (trunk + new tag), creates GitHub release with ZIP asset.
 - `prepare-release.yml` — manual: AI-generated changelog + version bump + release PR.
-- `pr-summary.yml` — auto-updates PR descriptions with AI-generated summaries.
 - `release-zip.yml` — runs on GitHub release creation: attaches ZIP asset.
 
 ## File Conventions
