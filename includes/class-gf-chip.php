@@ -1707,10 +1707,17 @@ class GF_Chip extends GFPaymentAddOn {
 			);
 		}
 
-		$now       = gmdate( 'Y-m-d H:i:s' );
-		$length    = (int) rgars( $feed, 'meta/billingCycle_length' );
-		$unit      = (string) rgars( $feed, 'meta/billingCycle_unit' );
-		$remaining = (int) rgars( $feed, 'meta/recurringTimes' );
+		$now    = gmdate( 'Y-m-d H:i:s' );
+		$length = (int) rgars( $feed, 'meta/billingCycle_length' );
+		$unit   = (string) rgars( $feed, 'meta/billingCycle_unit' );
+
+		// The stored counter wins once it exists. Re-reading recurringTimes
+		// from the feed here would reset a finite plan every cycle, so a
+		// 12-installment subscription would charge forever.
+		$remaining = GF_Chip_Renewals::resolve_remaining(
+			gform_get_meta( $entry_id, 'chip_sub_remaining' ),
+			(int) rgars( $feed, 'meta/recurringTimes' )
+		);
 
 		$plan = GF_Chip_Renewals::plan_renewal(
 			$entry,
@@ -1850,6 +1857,13 @@ class GF_Chip extends GFPaymentAddOn {
 		++$retry_count;
 
 		gform_update_meta( $entry_id, 'chip_sub_retry_count', $retry_count, $form_id );
+
+		// The installment was consumed by the pre-charge advance. Give it
+		// back, or the customer is billed fewer times than agreed.
+		$remaining = GF_Chip_Renewals::restore_installment(
+			gform_get_meta( $entry_id, 'chip_sub_remaining' )
+		);
+		gform_update_meta( $entry_id, 'chip_sub_remaining', $remaining, $form_id );
 
 		$due_date = rgar( $entry, 'chip_sub_next_payment' );
 		$next     = GF_Chip_Renewals::next_retry_at( $due_date, $retry_count );

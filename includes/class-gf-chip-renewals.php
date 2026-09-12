@@ -199,6 +199,61 @@ class GF_Chip_Renewals {
 	}
 
 	/**
+	 * Resolves how many installments remain for a subscription.
+	 *
+	 * A finite plan must count down across cycles, so the stored counter wins
+	 * over the feed value once it exists. Re-reading recurringTimes from the
+	 * feed every run would mean a 12-installment plan charges forever: the
+	 * counter would reset to 12 on every cycle and never reach zero.
+	 *
+	 * An empty/absent stored value means the plan has not started counting
+	 * yet, so the feed value applies. A stored `0` is a real value and is
+	 * honoured — it means the plan is finished.
+	 *
+	 * @param mixed $stored_value chip_sub_remaining as read back.
+	 * @param int   $feed_value   recurringTimes from the feed; 0 means unlimited.
+	 * @return int Installments remaining; 0 means none left or unlimited.
+	 */
+	public static function resolve_remaining( $stored_value, $feed_value ) {
+		$feed_value = max( 0, (int) $feed_value );
+
+		if ( '' === $stored_value || null === $stored_value ) {
+			return $feed_value;
+		}
+
+		// A non-numeric stored value must not silently end or reset a plan.
+		if ( ! is_numeric( $stored_value ) ) {
+			return $feed_value;
+		}
+
+		return max( 0, (int) $stored_value );
+	}
+
+	/**
+	 * Returns an installment consumed by a charge attempt that failed.
+	 *
+	 * The counter is decremented during the pre-charge advance so a crash
+	 * cannot double-charge. If the charge then fails, the installment must be
+	 * given back — otherwise the customer is billed fewer times than agreed
+	 * (a 5-installment plan delivering only 4).
+	 *
+	 * Unlimited plans stay unlimited: restoring 0 must not turn one into a
+	 * finite plan with a single installment.
+	 *
+	 * @param int $remaining Counter value after the failed attempt.
+	 * @return int Counter value to store.
+	 */
+	public static function restore_installment( $remaining ) {
+		$remaining = (int) $remaining;
+
+		if ( 0 === $remaining ) {
+			return 0;
+		}
+
+		return max( 1, $remaining + 1 );
+	}
+
+	/**
 	 * Compares two 'Y-m-d H:i:s' strings.
 	 *
 	 * String comparison rather than strtotime(): both values are already
