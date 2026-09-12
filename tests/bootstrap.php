@@ -177,3 +177,4 @@ if ( ! class_exists( 'GF_Chip' ) ) {
 // Load plugin classes under test (API and Bootstrap do not require Gravity Forms for tested methods).
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-api.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-bootstrap.php';
+require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-schedule.php';
