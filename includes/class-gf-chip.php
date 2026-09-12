@@ -679,6 +679,93 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Subscription states this plugin tracks in `chip_sub_status`.
+	 *
+	 * Distinct from Gravity Forms' own `payment_status`, which core uses for
+	 * its own UI predicates. Core's cancel-button gate reads `payment_status`,
+	 * so the two must stay in step: cancelling sets both.
+	 *
+	 * @var array
+	 */
+	const SUBSCRIPTION_STATES = array( 'pending', 'active', 'on-hold', 'cancelled', 'expired', 'failed' );
+
+	/**
+	 * Whether an entry is a subscription.
+	 *
+	 * Gravity Forms stores transaction_type '2' for a subscription and '1'
+	 * for a one-time payment.
+	 *
+	 * @param mixed $entry Entry object.
+	 * @return bool
+	 */
+	public static function is_subscription_entry( $entry ) {
+		if ( ! is_array( $entry ) ) {
+			return false;
+		}
+
+		return '2' === (string) rgar( $entry, 'transaction_type' );
+	}
+
+	/**
+	 * Whether the entry-detail refund UI should render.
+	 *
+	 * Deliberately NOT gated on the transaction type: a subscription's
+	 * payments are refundable too. The previous check required
+	 * transaction_type === '1', which hid the refund button on every
+	 * subscription entry.
+	 *
+	 * @param mixed $entry Entry object.
+	 * @return bool
+	 */
+	public static function should_render_refund_ui( $entry ) {
+		if ( ! is_array( $entry ) ) {
+			return false;
+		}
+
+		if ( empty( $entry['transaction_id'] ) || empty( $entry['payment_method'] ) ) {
+			return false;
+		}
+
+		return 'Paid' === rgar( $entry, 'payment_status' );
+	}
+
+	/**
+	 * Reads the plugin's own subscription state for an entry.
+	 *
+	 * Returns `pending` for any unrecognised or absent value rather than
+	 * passing it through, so a typo cannot silently bypass the renewal
+	 * engine's `active` filter.
+	 *
+	 * @param mixed $entry Entry object.
+	 * @return string One of SUBSCRIPTION_STATES.
+	 */
+	public static function get_subscription_state( $entry ) {
+		$state = is_array( $entry ) ? rgar( $entry, 'chip_sub_status' ) : '';
+
+		return in_array( $state, self::SUBSCRIPTION_STATES, true ) ? $state : 'pending';
+	}
+
+	/**
+	 * Whether a subscription may be cancelled.
+	 *
+	 * Mirrors the condition Gravity Forms core applies before rendering its
+	 * Cancel Subscription button, so the plugin can assert the precondition
+	 * rather than discovering it in the admin UI.
+	 *
+	 * @param mixed $entry Entry object.
+	 * @return bool
+	 */
+	public static function can_cancel_subscription( $entry ) {
+		if ( ! self::is_subscription_entry( $entry ) ) {
+			return false;
+		}
+
+		$status = rgar( $entry, 'payment_status' );
+
+		return 'Cancelled' !== $status && 'Failed' !== $status;
+	}
+
+	/**
 	 * Keeps or removes the Subscription transaction type choice.
 	 *
 	 * The choice is located by its VALUE rather than a fixed array index.
@@ -1596,6 +1683,99 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Cancels a subscription at CHIP.
+	 *
+	 * Overriding this is what makes Gravity Forms core render its Cancel
+	 * Subscription button: core gates the button on
+	 * payment_method_is_overridden( 'cancel' ). Core's
+	 * ajax_cancel_subscription() calls this, and only on true does it call
+	 * cancel_subscription() to move the entry to Cancelled.
+	 *
+	 * @param array $entry Entry object.
+	 * @param array $feed  Payment feed.
+	 * @return bool True when the token was revoked at CHIP.
+	 */
+	public function cancel( $entry, $feed ) {
+		$entry_id = rgar( $entry, 'id' );
+
+		if ( ! self::can_cancel_subscription( $entry ) ) {
+			$this->log_debug( __METHOD__ . "(): Entry #{$entry_id} is not a cancellable subscription." );
+			return false;
+		}
+
+		$payment_id = gform_get_meta( $entry_id, 'chip_payment_id' );
+
+		if ( empty( $payment_id ) ) {
+			$this->log_debug( __METHOD__ . "(): No chip_payment_id for entry #{$entry_id}." );
+			return false;
+		}
+
+		$credentials = $this->get_credentials_for_feed( $feed );
+		$chip        = GF_CHIP_API::get_instance( $credentials['secret_key'], $credentials['brand_id'] );
+
+		// Revoke the stored token so it can never be charged again. This is
+		// the part that actually stops the money; the entry status below is
+		// bookkeeping.
+		$result = $chip->delete_recurring_token( $payment_id );
+
+		if ( ! is_array( $result ) ) {
+			$this->log_debug( __METHOD__ . "(): Failed to delete recurring token for entry #{$entry_id}." );
+			return false;
+		}
+
+		// Clear the local token and schedule so the renewal engine cannot
+		// pick this subscription up before core updates the entry status.
+		gform_delete_meta( $entry_id, 'chip_recurring_token' );
+		gform_delete_meta( $entry_id, 'chip_sub_next_payment' );
+
+		return true;
+	}
+
+	/**
+	 * Starts a subscription after its first payment succeeded.
+	 *
+	 * Core's start_subscription() sets payment_status/transaction_type and
+	 * fires its own action; this adds the plugin's own scheduling state on
+	 * top rather than duplicating core's work.
+	 *
+	 * @param array $entry        Entry object.
+	 * @param array $subscription Subscription data from core.
+	 * @return array The entry.
+	 */
+	public function start_subscription( $entry, $subscription ) {
+		$entry = parent::start_subscription( $entry, $subscription );
+
+		$entry_id = rgar( $entry, 'id' );
+		$form     = GFAPI::get_form( rgar( $entry, 'form_id' ) );
+		$feed     = $this->get_payment_feed( $entry, $form );
+
+		$length    = (int) rgars( $feed, 'meta/billingCycle_length' );
+		$unit      = (string) rgars( $feed, 'meta/billingCycle_unit' );
+		$remaining = (int) rgars( $feed, 'meta/recurringTimes' );
+
+		$cycle = GF_Chip_Schedule::apply_cycle(
+			new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) ),
+			$length > 0 ? $length : 1,
+			$unit,
+			$remaining
+		);
+
+		gform_update_meta( $entry_id, 'chip_sub_status', $cycle['expired'] ? 'expired' : 'active', rgar( $form, 'id' ) );
+		gform_update_meta( $entry_id, 'chip_sub_retry_count', 0, rgar( $form, 'id' ) );
+
+		if ( null !== $cycle['next'] ) {
+			gform_update_meta(
+				$entry_id,
+				'chip_sub_next_payment',
+				$cycle['next']->format( 'Y-m-d H:i:s' ),
+				rgar( $form, 'id' )
+			);
+		}
+
+		return $entry;
+	}
+
+	/**
 	 * Stores the recurring token when a subscription purchase completes.
 	 *
 	 * The callback action carries no token — only the payment id — so the full
@@ -1656,8 +1836,14 @@ class GF_Chip extends GFPaymentAddOn {
 	 */
 	public function entry_info( $form_id, $entry ) {
 
-		// Return if no transaction_id.
-		if ( empty( $entry['transaction_id'] ) || empty( $entry['payment_method'] ) || 'Paid' !== $entry['payment_status'] || '1' !== $entry['transaction_type'] ) {
+		// Render core's entry info first, which is what draws the Cancel
+		// Subscription button for a subscription entry. Not calling parent::
+		// here was why that button never appeared, however cancel() was
+		// implemented.
+		parent::entry_info( $form_id, $entry );
+
+		// Return if there is nothing to refund.
+		if ( ! self::should_render_refund_ui( $entry ) ) {
 			return;
 		}
 
