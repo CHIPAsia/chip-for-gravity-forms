@@ -436,6 +436,107 @@ class GF_CHIP_APITest extends TestCase {
 	}
 
 	/**
+	 * charge_recurring POSTs to the charge route with the token as the body.
+	 *
+	 * The token is what authorises the charge, so the route AND the payload
+	 * shape both matter — a wrong route silently charges nothing, a wrong
+	 * payload key fails at CHIP.
+	 */
+	public function test_charge_recurring_posts_token_to_charge_route(): void {
+		$response_body = json_encode( array( 'id' => 'pay_charge_1', 'status' => 'paid' ) );
+		$requests      = array();
+
+		WP_Mock::userFunction( 'wp_remote_request' )
+			->once()
+			->andReturnUsing( function ( $url, $args ) use ( $response_body, &$requests ) {
+				$requests[] = array( 'url' => $url, 'args' => $args );
+				return array( 'body' => $response_body );
+			} );
+
+		WP_Mock::userFunction( 'wp_remote_retrieve_body' )
+			->andReturnUsing( function ( $response ) {
+				return is_array( $response ) && array_key_exists( 'body', $response ) ? $response['body'] : '';
+			} );
+
+		WP_Mock::userFunction( 'apply_filters' )
+			->with( 'gf_chip_sslverify', true )
+			->andReturn( true );
+
+		$api    = GF_CHIP_API::get_instance( 'test_secret', 'test_brand' );
+		$result = $api->charge_recurring( 'pay_new_1', 'tok_abc123' );
+
+		$this->assertIsArray( $result );
+		$this->assertSame( 'paid', $result['status'] );
+
+		$this->assertCount( 1, $requests );
+		$this->assertSame( 'POST', $requests[0]['args']['method'] );
+		$this->assertStringContainsString( '/api/v1/purchases/pay_new_1/charge/', $requests[0]['url'] );
+
+		// The token must travel in the JSON body under the `recurring_token` key.
+		$sent = json_decode( $requests[0]['args']['body'], true );
+		$this->assertSame( array( 'recurring_token' => 'tok_abc123' ), $sent );
+	}
+
+	/**
+	 * charge_recurring returns null when CHIP reports errors (declined charge).
+	 */
+	public function test_charge_recurring_returns_null_when_response_has_errors(): void {
+		$response_body = json_encode( array( 'errors' => array( 'Insufficient funds' ) ) );
+
+		WP_Mock::userFunction( 'wp_remote_request' )
+			->once()
+			->andReturn( array( 'body' => $response_body ) );
+
+		WP_Mock::userFunction( 'wp_remote_retrieve_body' )
+			->andReturnUsing( function ( $response ) {
+				return is_array( $response ) && array_key_exists( 'body', $response ) ? $response['body'] : '';
+			} );
+
+		WP_Mock::userFunction( 'apply_filters' )
+			->with( 'gf_chip_sslverify', true )
+			->andReturn( true );
+
+		$api = GF_CHIP_API::get_instance( 'test_secret', 'test_brand' );
+		$this->assertNull( $api->charge_recurring( 'pay_new_1', 'tok_declined' ) );
+	}
+
+	/**
+	 * delete_recurring_token POSTs to the delete_recurring_token route with no body.
+	 */
+	public function test_delete_recurring_token_posts_to_delete_route(): void {
+		$response_body = json_encode( array( 'id' => 'pay_1', 'recurring_token' => null ) );
+		$requests      = array();
+
+		WP_Mock::userFunction( 'wp_remote_request' )
+			->once()
+			->andReturnUsing( function ( $url, $args ) use ( $response_body, &$requests ) {
+				$requests[] = array( 'url' => $url, 'args' => $args );
+				return array( 'body' => $response_body );
+			} );
+
+		WP_Mock::userFunction( 'wp_remote_retrieve_body' )
+			->andReturnUsing( function ( $response ) {
+				return is_array( $response ) && array_key_exists( 'body', $response ) ? $response['body'] : '';
+			} );
+
+		WP_Mock::userFunction( 'apply_filters' )
+			->with( 'gf_chip_sslverify', true )
+			->andReturn( true );
+
+		$api    = GF_CHIP_API::get_instance( 'test_secret', 'test_brand' );
+		$result = $api->delete_recurring_token( 'pay_1' );
+
+		$this->assertIsArray( $result );
+
+		$this->assertCount( 1, $requests );
+		$this->assertSame( 'POST', $requests[0]['args']['method'] );
+		$this->assertStringContainsString( '/api/v1/purchases/pay_1/delete_recurring_token/', $requests[0]['url'] );
+
+		// No params means `call()` leaves body as the empty array it was given.
+		$this->assertSame( array(), $requests[0]['args']['body'] );
+	}
+
+	/**
 	 * get_instance returns same instance for identical credentials.
 	 */
 	public function test_get_instance_returns_same_for_identical_credentials(): void {
