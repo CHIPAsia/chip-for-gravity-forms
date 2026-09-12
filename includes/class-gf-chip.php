@@ -547,6 +547,138 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Card payment method group that CHIP recurring tokens require.
+	 *
+	 * Mirrors chip-for-woocommerce's CARD_GROUP. Recurring tokens are
+	 * card-only, so a subscription cannot be offered FPX, DuitNow QR or the
+	 * e-wallets even though a one-time payment can.
+	 *
+	 * @var array
+	 */
+	const RECURRING_CARD_METHODS = array( 'card', 'visa', 'mastercard', 'maestro' );
+
+	/**
+	 * Payment method whitelist for a recurring (subscription) purchase.
+	 *
+	 * @return array
+	 */
+	public static function get_recurring_payment_method_whitelist() {
+		$whitelist = self::RECURRING_CARD_METHODS;
+
+		return (array) apply_filters( 'gf_chip_recurring_payment_method_whitelist', $whitelist );
+	}
+
+	/**
+	 * Extra CHIP purchase params needed to obtain a recurring token.
+	 *
+	 * Returns an empty array for anything that is not a subscription feed.
+	 * This must stay strictly gated: an unconditional `force_recurring` would
+	 * tokenise one-time payments too and change behaviour for every existing
+	 * user of the plugin.
+	 *
+	 * @param array $feed The Gravity Forms feed object.
+	 * @return array Params to merge into the purchase payload, or empty.
+	 */
+	public static function get_checkout_token_params( $feed ) {
+		$transaction_type = is_array( $feed ) ? rgars( $feed, 'meta/transactionType' ) : '';
+
+		if ( 'subscription' !== $transaction_type ) {
+			return array();
+		}
+
+		return array(
+			'force_recurring'          => true,
+			'payment_method_whitelist' => self::get_recurring_payment_method_whitelist(),
+		);
+	}
+
+	/**
+	 * Merges subscription token params into a purchase payload.
+	 *
+	 * Split out from redirect_url() so the wiring itself is unit testable —
+	 * the params builder being correct is worthless if it is never applied.
+	 *
+	 * @param array $params The purchase params built so far.
+	 * @param array $feed   The Gravity Forms feed object.
+	 * @return array The payload with token params merged for a subscription feed.
+	 */
+	public static function merge_checkout_token_params( $params, $feed ) {
+		$token_params = self::get_checkout_token_params( $feed );
+
+		if ( empty( $token_params ) ) {
+			// Leave a one-time payload byte-for-byte unchanged.
+			return $params;
+		}
+
+		return array_merge( (array) $params, $token_params );
+	}
+
+	/**
+	 * Extracts the recurring token from a CHIP purchase response.
+	 *
+	 * CHIP returns the token in one of two shapes:
+	 *  - `is_recurring_token === true`: the purchase **id itself** is the token
+	 *    and there is no separate `recurring_token` field;
+	 *  - otherwise: the `recurring_token` field holds it.
+	 *
+	 * Returns null when neither is present, rather than falling back to the
+	 * purchase id — a wrong token would be stored and the subscription could
+	 * never be renewed.
+	 *
+	 * @param mixed $purchase Decoded CHIP purchase response.
+	 * @return string|null
+	 */
+	public static function extract_recurring_token( $purchase ) {
+		if ( ! is_array( $purchase ) ) {
+			return null;
+		}
+
+		$is_recurring_token = ! empty( $purchase['is_recurring_token'] );
+		if ( $is_recurring_token && ! empty( $purchase['id'] ) ) {
+			return (string) $purchase['id'];
+		}
+
+		if ( ! empty( $purchase['recurring_token'] ) ) {
+			return (string) $purchase['recurring_token'];
+		}
+
+		return null;
+	}
+
+	/**
+	 * Persists the recurring token and subscription id for an entry.
+	 *
+	 * Called once a subscription purchase has been paid. Without a stored
+	 * token the renewal engine has nothing to charge, so the caller must treat
+	 * a false return as a hard failure worth surfacing rather than a warning —
+	 * a subscription with no token looks active but can never renew.
+	 *
+	 * @param int   $entry_id The Gravity Forms entry id the subscription belongs to.
+	 * @param int   $form_id  The form id, for the entry meta call.
+	 * @param mixed $purchase Decoded CHIP purchase response.
+	 * @return bool True when a token was stored.
+	 */
+	public static function persist_subscription_token( $entry_id, $form_id, $purchase ) {
+		$token = self::extract_recurring_token( $purchase );
+
+		if ( null === $token || '' === $token ) {
+			return false;
+		}
+
+		gform_update_meta( $entry_id, 'chip_recurring_token', $token, $form_id );
+
+		// The purchase id identifies the CHIP subscription and is needed to
+		// charge or delete the token later. It is not always the token itself
+		// (see extract_recurring_token), so store it separately.
+		$subscription_id = is_array( $purchase ) && ! empty( $purchase['id'] )
+			? (string) $purchase['id']
+			: $token;
+		gform_update_meta( $entry_id, 'chip_subscription_id', $subscription_id, $form_id );
+
+		return true;
+	}
+
+	/**
 	 * Keeps or removes the Subscription transaction type choice.
 	 *
 	 * The choice is located by its VALUE rather than a fixed array index.
@@ -967,6 +1099,11 @@ class GF_Chip extends GFPaymentAddOn {
 
 		// Merge client array with client meta data array.
 		$params['client'] += $client_meta_data;
+
+		// A subscription feed must request a recurring token, and only card
+		// methods can produce one. Merged before the filter below so an
+		// operator can still override the whole payload.
+		$params = self::merge_checkout_token_params( $params, $feed );
 
 		// Enable customization for gateway charges.
 		$params = apply_filters( 'gf_chip_purchases_api_parameters', $params, array( $feed, $submission_data, $form, $entry ) );
@@ -1453,7 +1590,62 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
 
+		$this->maybe_store_subscription_token( $entry, $feed, $form );
+
 		return true;
+	}
+
+	/**
+	 * Stores the recurring token when a subscription purchase completes.
+	 *
+	 * The callback action carries no token — only the payment id — so the full
+	 * purchase is fetched here, where it is still available. Only runs for a
+	 * subscription feed; a one-time purchase has no token to store.
+	 *
+	 * @param array $entry Entry object.
+	 * @param array $feed  The payment feed.
+	 * @param array $form  Form object.
+	 * @return void
+	 */
+	private function maybe_store_subscription_token( $entry, $feed, $form ) {
+		if ( 'subscription' !== rgars( $feed, 'meta/transactionType' ) ) {
+			return;
+		}
+
+		$entry_id   = rgar( $entry, 'id' );
+		$payment_id = gform_get_meta( $entry_id, 'chip_payment_id' );
+
+		if ( empty( $payment_id ) ) {
+			$this->log_debug( __METHOD__ . "(): No chip_payment_id for entry #{$entry_id}, cannot store token." );
+			return;
+		}
+
+		$credentials = $this->get_credentials_for_feed( $feed );
+		$chip        = GF_CHIP_API::get_instance( $credentials['secret_key'], $credentials['brand_id'] );
+		$purchase    = $chip->get_payment( $payment_id );
+
+		if ( ! self::persist_subscription_token( $entry_id, rgar( $form, 'id' ), $purchase ) ) {
+			// A subscription with no token looks active but can never renew,
+			// so this must be visible rather than a debug-only line.
+			$this->add_note(
+				$entry_id,
+				esc_html__( 'Subscription created without a recurring token. The subscription cannot be renewed automatically; please check the CHIP configuration for this form.', 'chip-for-gravity-forms' ),
+				'error'
+			);
+			$this->log_debug( __METHOD__ . "(): No recurring token returned for entry #{$entry_id}." );
+			return;
+		}
+
+		$token = gform_get_meta( $entry_id, 'chip_recurring_token' );
+		$this->add_note(
+			$entry_id,
+			sprintf(
+				/* translators: %s: masked token reference. */
+				esc_html__( 'Recurring token stored for this subscription (reference: %s).', 'chip-for-gravity-forms' ),
+				substr( (string) $token, 0, 12 )
+			),
+			'success'
+		);
 	}
 
 	/**
