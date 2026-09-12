@@ -78,19 +78,199 @@ if ( ! function_exists( 'rgpost' ) ) {
 	}
 }
 
+/**
+ * In-memory entry meta store standing in for Gravity Forms' real one.
+ *
+ * These were previously empty no-ops, which meant a read always returned ''
+ * and a write/discard could not be observed. That hid real defects: code that
+ * wrote a value and then re-read it looked correct even when the write never
+ * reached anything, and a comparison against stored meta could not be
+ * exercised at all. Three shipped bugs lived in exactly that seam.
+ *
+ * Behaviour deliberately mirrors Gravity Forms:
+ *  - a missing key returns '' (GF does not return null)
+ *  - a value that was stored as '' is therefore indistinguishable from
+ *    missing, exactly as in production
+ *  - 0 / '0' / false are returned as stored, NOT coerced to ''
+ *  - meta is per entry id and per key
+ *
+ * Tests that need a clean slate call GF_Chip_Test_Meta::reset().
+ */
+if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
+	/**
+	 * Test double for the Gravity Forms entry meta store.
+	 */
+	class GF_Chip_Test_Meta {
+
+		/**
+		 * Stored meta, keyed by entry id then meta key.
+		 *
+		 * @var array
+		 */
+		private static $store = array();
+
+		/**
+		 * Every write, in order, for assertions about call counts.
+		 *
+		 * @var array
+		 */
+		private static $writes = array();
+
+		/**
+		 * Every delete, in order.
+		 *
+		 * @var array
+		 */
+		private static $deletes = array();
+
+		/**
+		 * Clears all state.
+		 *
+		 * @return void
+		 */
+		public static function reset() {
+			self::$store   = array();
+			self::$writes  = array();
+			self::$deletes = array();
+		}
+
+		/**
+		 * Stores a value.
+		 *
+		 * @param int    $entry_id   Entry id.
+		 * @param string $meta_key   Meta key.
+		 * @param mixed  $meta_value Value.
+		 * @return bool
+		 */
+		public static function set( $entry_id, $meta_key, $meta_value ) {
+			$entry_id = (int) $entry_id;
+
+			self::$store[ $entry_id ][ $meta_key ] = $meta_value;
+			self::$writes[]                        = array(
+				'entry_id' => $entry_id,
+				'key'      => $meta_key,
+				'value'    => $meta_value,
+			);
+
+			return true;
+		}
+
+		/**
+		 * Reads a value, mirroring Gravity Forms' '' for a missing key.
+		 *
+		 * @param int    $entry_id Entry id.
+		 * @param string $meta_key Meta key.
+		 * @return mixed
+		 */
+		public static function get( $entry_id, $meta_key ) {
+			$entry_id = (int) $entry_id;
+
+			if ( ! isset( self::$store[ $entry_id ] ) || ! array_key_exists( $meta_key, self::$store[ $entry_id ] ) ) {
+				return '';
+			}
+
+			return self::$store[ $entry_id ][ $meta_key ];
+		}
+
+		/**
+		 * Deletes a value.
+		 *
+		 * @param int    $entry_id Entry id.
+		 * @param string $meta_key Meta key.
+		 * @return void
+		 */
+		public static function delete( $entry_id, $meta_key ) {
+			$entry_id = (int) $entry_id;
+
+			unset( self::$store[ $entry_id ][ $meta_key ] );
+			self::$deletes[] = array(
+				'entry_id' => $entry_id,
+				'key'      => $meta_key,
+			);
+		}
+
+		/**
+		 * Whether a key exists for an entry (distinguishes set-from-absent,
+		 * which get() alone cannot do because GF returns '' for both).
+		 *
+		 * @param int    $entry_id Entry id.
+		 * @param string $meta_key Meta key.
+		 * @return bool
+		 */
+		public static function has( $entry_id, $meta_key ) {
+			$entry_id = (int) $entry_id;
+
+			return isset( self::$store[ $entry_id ] ) && array_key_exists( $meta_key, self::$store[ $entry_id ] );
+		}
+
+		/**
+		 * All writes recorded, for call-count assertions.
+		 *
+		 * @return array
+		 */
+		public static function writes() {
+			return self::$writes;
+		}
+
+		/**
+		 * Writes matching a key.
+		 *
+		 * @param string $meta_key Meta key.
+		 * @return array
+		 */
+		public static function writes_for( $meta_key ) {
+			return array_values(
+				array_filter(
+					self::$writes,
+					function ( $w ) use ( $meta_key ) {
+						return $w['key'] === $meta_key;
+					}
+				)
+			);
+		}
+
+		/**
+		 * All deletes recorded.
+		 *
+		 * @return array
+		 */
+		public static function deletes() {
+			return self::$deletes;
+		}
+
+		/**
+		 * Whether a key was deleted.
+		 *
+		 * @param string $meta_key Meta key.
+		 * @return bool
+		 */
+		public static function was_deleted( $meta_key ) {
+			foreach ( self::$deletes as $d ) {
+				if ( $d['key'] === $meta_key ) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+	}
+}
+
 if ( ! function_exists( 'gform_update_meta' ) ) {
 	function gform_update_meta( $entry_id, $meta_key, $meta_value, $form_id = null ) {
+		return GF_Chip_Test_Meta::set( $entry_id, $meta_key, $meta_value );
 	}
 }
 
 if ( ! function_exists( 'gform_get_meta' ) ) {
 	function gform_get_meta( $entry_id, $meta_key ) {
-		return '';
+		return GF_Chip_Test_Meta::get( $entry_id, $meta_key );
 	}
 }
 
 if ( ! function_exists( 'gform_delete_meta' ) ) {
 	function gform_delete_meta( $entry_id, $meta_key ) {
+		GF_Chip_Test_Meta::delete( $entry_id, $meta_key );
 	}
 }
 
