@@ -151,6 +151,40 @@ class GF_CHIP_API {
 	}
 
 	/**
+	 * Charges a stored recurring token.
+	 *
+	 * Used to collect a subscription renewal without the customer present.
+	 * The purchase id is the purchase the charge is recorded against; the
+	 * token authorises it.
+	 *
+	 * @param string $purchase_id     Purchase ID the charge is created against.
+	 * @param string $recurring_token Stored recurring token.
+	 * @return array|null
+	 */
+	public function charge_recurring( $purchase_id, $recurring_token ) {
+		return $this->call(
+			'POST',
+			"/purchases/{$purchase_id}/charge/",
+			array(
+				'recurring_token' => $recurring_token,
+			)
+		);
+	}
+
+	/**
+	 * Deletes a stored recurring token.
+	 *
+	 * Called when a subscription is cancelled or its card is replaced, so the
+	 * old token can no longer be charged.
+	 *
+	 * @param string $purchase_id Purchase ID holding the token.
+	 * @return array|null
+	 */
+	public function delete_recurring_token( $purchase_id ) {
+		return $this->call( 'POST', "/purchases/{$purchase_id}/delete_recurring_token/" );
+	}
+
+	/**
 	 * Makes an API call.
 	 *
 	 * @param string $method  HTTP method.
