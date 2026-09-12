@@ -58,6 +58,20 @@ class GF_Chip_Card_Update {
 	const ARG_SIGNATURE = 'hash';
 
 	/**
+	 * Query var carrying the per-link nonce.
+	 *
+	 * @var string
+	 */
+	const ARG_NONCE = 'n';
+
+	/**
+	 * Entry meta key holding the live link's nonce.
+	 *
+	 * @var string
+	 */
+	const META_LINK_NONCE = 'chip_card_update_nonce';
+
+	/**
 	 * Default link lifetime, in days.
 	 *
 	 * Covers the +1d/+3d/+5d retry ladder with margin, and is long enough to
@@ -94,6 +108,24 @@ class GF_Chip_Card_Update {
 		return $days > 0 ? $days : self::DEFAULT_EXPIRY_DAYS;
 	}
 
+	/**
+	 * Generates a per-link nonce.
+	 *
+	 * Pulled into its own method so tests can inject a deterministic value and
+	 * so the source of randomness is visible in one place. Falls back to a
+	 * hashed uniqid when no CSPRNG is available; that is weaker, but a
+	 * predictable nonce still cannot forge a signature without AUTH_KEY.
+	 *
+	 * @return string
+	 */
+	public static function generate_nonce() {
+		if ( function_exists( 'random_bytes' ) ) {
+			return bin2hex( random_bytes( 16 ) );
+		}
+
+		return md5( uniqid( (string) wp_rand(), true ) );
+	}
+
 	// -----------------------------------------------------------------
 	// Pure logic — unit tested without WordPress.
 	// -----------------------------------------------------------------
@@ -105,12 +137,20 @@ class GF_Chip_Card_Update {
 	 * a mismatch here would reject every valid link, or worse, accept a
 	 * forged one.
 	 *
-	 * @param int $entry_id Entry id.
-	 * @param int $expiry   Expiry timestamp.
+	 * The nonce is what makes two links for the same entry distinct. Without
+	 * it, the payload is entry_id + expiry and wp_hash() is deterministic, so
+	 * two links issued in the same second would carry the SAME signature —
+	 * and retiring one by issuing the next would silently resurrect the
+	 * consumed link until the clock ticked over. Found by live testing against
+	 * real wp_hash(); a unit test with a stubbed hash could not see it.
+	 *
+	 * @param int    $entry_id Entry id.
+	 * @param int    $expiry   Expiry timestamp.
+	 * @param string $nonce    Per-link random value.
 	 * @return string
 	 */
-	public static function signature_payload( $entry_id, $expiry ) {
-		return 'chip_card_update|' . (int) $entry_id . '|' . (int) $expiry;
+	public static function signature_payload( $entry_id, $expiry, $nonce ) {
+		return 'chip_card_update|' . (int) $entry_id . '|' . (int) $expiry . '|' . (string) $nonce;
 	}
 
 	/**
@@ -144,6 +184,22 @@ class GF_Chip_Card_Update {
 		}
 
 		return hash_equals( $expected, $presented );
+	}
+
+	/**
+	 * Whether a presented nonce matches the one on record.
+	 *
+	 * Extracted so the decision is unit testable: gform_get_meta() is defined
+	 * as a no-op in the test bootstrap, so a comparison buried inside
+	 * validate() cannot be exercised by a test. Splitting it out means the
+	 * check itself has coverage even though the meta read does not.
+	 *
+	 * @param mixed  $stored    Stored nonce.
+	 * @param string $presented Nonce from the request.
+	 * @return bool
+	 */
+	public static function nonce_matches( $stored, $presented ) {
+		return self::signature_matches( (string) $stored, (string) $presented );
 	}
 
 	/**
@@ -254,16 +310,22 @@ class GF_Chip_Card_Update {
 
 		$form_id = rgar( $entry, 'form_id' );
 		$expiry  = time() + ( self::expiry_days() * 86400 );
-		$payload = self::signature_payload( $entry_id, $expiry );
+
+		// A per-link nonce makes each issued link's signature unique even when
+		// two are issued within the same second.
+		$nonce   = self::generate_nonce();
+		$payload = self::signature_payload( $entry_id, $expiry, $nonce );
 		$sig     = wp_hash( $payload );
 
 		gform_update_meta( $entry_id, self::META_LINK_SIGNATURE, $sig, $form_id );
 		gform_update_meta( $entry_id, self::META_LINK_EXPIRY, $expiry, $form_id );
+		gform_update_meta( $entry_id, self::META_LINK_NONCE, $nonce, $form_id );
 
 		return add_query_arg(
 			array(
 				self::ARG_ENTRY     => $entry_id,
 				self::ARG_EXPIRY    => $expiry,
+				self::ARG_NONCE     => $nonce,
 				self::ARG_SIGNATURE => $sig,
 			),
 			home_url( '/' )
@@ -296,8 +358,9 @@ class GF_Chip_Card_Update {
 		$entry_id = isset( $request[ self::ARG_ENTRY ] ) ? (int) $request[ self::ARG_ENTRY ] : 0;
 		$expiry   = isset( $request[ self::ARG_EXPIRY ] ) ? (int) $request[ self::ARG_EXPIRY ] : 0;
 		$sig      = isset( $request[ self::ARG_SIGNATURE ] ) ? (string) $request[ self::ARG_SIGNATURE ] : '';
+		$nonce    = isset( $request[ self::ARG_NONCE ] ) ? (string) $request[ self::ARG_NONCE ] : '';
 
-		if ( $entry_id <= 0 || $expiry <= 0 || '' === $sig ) {
+		if ( $entry_id <= 0 || $expiry <= 0 || '' === $sig || '' === $nonce ) {
 			return $invalid( 'incomplete' );
 		}
 
@@ -311,9 +374,16 @@ class GF_Chip_Card_Update {
 			return $invalid( 'signature' );
 		}
 
-		// The stored signature must also match what this entry+expiry pair
-		// produces, so a valid signature for another entry cannot be replayed.
-		if ( ! self::signature_matches( $stored, wp_hash( self::signature_payload( $entry_id, $expiry ) ) ) ) {
+		// The stored signature must also match what this entry+expiry+nonce
+		// triple produces, so a signature lifted from another link cannot be
+		// replayed at this entry.
+		$stored_nonce = gform_get_meta( $entry_id, self::META_LINK_NONCE );
+
+		if ( ! self::nonce_matches( $stored_nonce, $nonce ) ) {
+			return $invalid( 'nonce' );
+		}
+
+		if ( ! self::signature_matches( $stored, wp_hash( self::signature_payload( $entry_id, $expiry, $nonce ) ) ) ) {
 			return $invalid( 'binding' );
 		}
 
@@ -333,8 +403,26 @@ class GF_Chip_Card_Update {
 	 * @return void
 	 */
 	public static function consume_link( $entry_id ) {
-		gform_delete_meta( $entry_id, self::META_LINK_SIGNATURE );
-		gform_delete_meta( $entry_id, self::META_LINK_EXPIRY );
+		foreach ( self::link_meta_keys() as $key ) {
+			gform_delete_meta( $entry_id, $key );
+		}
+	}
+
+	/**
+	 * The meta keys that make up a live link.
+	 *
+	 * Returned as a list so consume_link() cannot clear two of the three and
+	 * leave a link partially alive — a mistake that stays invisible in
+	 * production until an old link is replayed. Asserted by a test.
+	 *
+	 * @return array
+	 */
+	public static function link_meta_keys() {
+		return array(
+			self::META_LINK_SIGNATURE,
+			self::META_LINK_EXPIRY,
+			self::META_LINK_NONCE,
+		);
 	}
 
 	/**

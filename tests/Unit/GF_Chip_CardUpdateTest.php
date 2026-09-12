@@ -49,6 +49,7 @@ class GF_Chip_CardUpdateTest extends TestCase {
 		return array(
 			GF_Chip_Card_Update::ARG_ENTRY     => $entry_id,
 			GF_Chip_Card_Update::ARG_EXPIRY    => $expiry,
+			GF_Chip_Card_Update::ARG_NONCE     => 'nonce-value',
 			GF_Chip_Card_Update::ARG_SIGNATURE => 'stored-signature',
 		);
 	}
@@ -62,8 +63,8 @@ class GF_Chip_CardUpdateTest extends TestCase {
 	 */
 	public function test_payload_is_deterministic(): void {
 		$this->assertSame(
-			GF_Chip_Card_Update::signature_payload( 42, 1000 ),
-			GF_Chip_Card_Update::signature_payload( 42, 1000 )
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'n1' ),
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'n1' )
 		);
 	}
 
@@ -75,8 +76,8 @@ class GF_Chip_CardUpdateTest extends TestCase {
 	 */
 	public function test_payload_differs_per_entry(): void {
 		$this->assertNotSame(
-			GF_Chip_Card_Update::signature_payload( 42, 1000 ),
-			GF_Chip_Card_Update::signature_payload( 43, 1000 )
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'n1' ),
+			GF_Chip_Card_Update::signature_payload( 43, 1000, 'n1' )
 		);
 	}
 
@@ -85,8 +86,8 @@ class GF_Chip_CardUpdateTest extends TestCase {
 	 */
 	public function test_payload_differs_per_expiry(): void {
 		$this->assertNotSame(
-			GF_Chip_Card_Update::signature_payload( 42, 1000 ),
-			GF_Chip_Card_Update::signature_payload( 42, 2000 )
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'n1' ),
+			GF_Chip_Card_Update::signature_payload( 42, 2000, 'n1' )
 		);
 	}
 
@@ -337,6 +338,7 @@ class GF_Chip_CardUpdateTest extends TestCase {
 		$request = array(
 			GF_Chip_Card_Update::ARG_ENTRY     => 42,
 			GF_Chip_Card_Update::ARG_EXPIRY    => 1000,
+			GF_Chip_Card_Update::ARG_NONCE     => 'n',
 			GF_Chip_Card_Update::ARG_SIGNATURE => 'sig',
 		);
 
@@ -358,6 +360,7 @@ class GF_Chip_CardUpdateTest extends TestCase {
 				array(
 					GF_Chip_Card_Update::ARG_ENTRY     => 0,
 					GF_Chip_Card_Update::ARG_EXPIRY    => 1000,
+					GF_Chip_Card_Update::ARG_NONCE     => 'n',
 					GF_Chip_Card_Update::ARG_SIGNATURE => 'sig',
 				),
 				500
@@ -370,6 +373,7 @@ class GF_Chip_CardUpdateTest extends TestCase {
 				array(
 					GF_Chip_Card_Update::ARG_ENTRY     => 42,
 					GF_Chip_Card_Update::ARG_EXPIRY    => 0,
+					GF_Chip_Card_Update::ARG_NONCE     => 'n',
 					GF_Chip_Card_Update::ARG_SIGNATURE => 'sig',
 				),
 				500
@@ -388,6 +392,7 @@ class GF_Chip_CardUpdateTest extends TestCase {
 				array(
 					GF_Chip_Card_Update::ARG_ENTRY     => 42,
 					GF_Chip_Card_Update::ARG_EXPIRY    => 1000,
+					GF_Chip_Card_Update::ARG_NONCE     => 'n',
 					GF_Chip_Card_Update::ARG_SIGNATURE => 'sig',
 				),
 				2000
@@ -456,5 +461,109 @@ class GF_Chip_CardUpdateTest extends TestCase {
 				array( 'transaction_type' => '1', 'chip_sub_status' => 'active' )
 			)
 		);
+	}
+
+	// ---------------------------------------------------------------------
+	// The nonce — what makes two links for one entry distinct.
+	//
+	// Found by live testing against real wp_hash(): without a nonce the
+	// payload is entry_id + expiry, so two links issued in the same second
+	// share a signature and a consumed link is resurrected by re-issuing.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The payload includes the nonce, so two links for the same entry and
+	 * expiry produce different payloads.
+	 */
+	public function test_payload_differs_per_nonce(): void {
+		$this->assertNotSame(
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'nonce-a' ),
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'nonce-b' )
+		);
+	}
+
+	/**
+	 * Same entry, same expiry, same nonce => same payload. Generation and
+	 * validation must agree or every link would fail.
+	 */
+	public function test_payload_stable_for_same_nonce(): void {
+		$this->assertSame(
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'nonce-a' ),
+			GF_Chip_Card_Update::signature_payload( 42, 1000, 'nonce-a' )
+		);
+	}
+
+	/**
+	 * A request without a nonce is rejected as incomplete.
+	 */
+	public function test_validate_rejects_missing_nonce(): void {
+		$request = array(
+			GF_Chip_Card_Update::ARG_ENTRY     => 42,
+			GF_Chip_Card_Update::ARG_EXPIRY    => 1000,
+			GF_Chip_Card_Update::ARG_SIGNATURE => 'sig',
+		);
+
+		$result = GF_Chip_Card_Update::validate( $request, 500 );
+
+		$this->assertFalse( $result['valid'] );
+		$this->assertSame( 'incomplete', $result['reason'] );
+	}
+
+	/**
+	 * A generated nonce is non-empty and not trivially predictable across
+	 * calls.
+	 */
+	public function test_generate_nonce_is_unique_across_calls(): void {
+		$first  = GF_Chip_Card_Update::generate_nonce();
+		$second = GF_Chip_Card_Update::generate_nonce();
+
+		$this->assertNotSame( '', $first );
+		$this->assertNotSame( '', $second );
+		$this->assertNotSame( $first, $second, 'two nonces must not collide' );
+	}
+
+	// ---------------------------------------------------------------------
+	// Closing the two gaps the nonce sabotage pass exposed.
+	//
+	// gform_get_meta()/gform_delete_meta() are DEFINED as no-ops in
+	// tests/bootstrap.php, so WP_Mock cannot intercept them and mutating the
+	// nonce comparison or the deletion list left the suite green. These make
+	// both reachable.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The nonce comparison, exercised directly.
+	 */
+	public function test_nonce_matches_accepts_identical(): void {
+		$this->assertTrue( GF_Chip_Card_Update::nonce_matches( 'abc123', 'abc123' ) );
+	}
+
+	public function test_nonce_matches_rejects_different(): void {
+		$this->assertFalse( GF_Chip_Card_Update::nonce_matches( 'abc123', 'abc124' ) );
+	}
+
+	public function test_nonce_matches_rejects_empty_stored(): void {
+		$this->assertFalse( GF_Chip_Card_Update::nonce_matches( '', 'abc123' ) );
+		$this->assertFalse( GF_Chip_Card_Update::nonce_matches( null, 'abc123' ) );
+	}
+
+	public function test_nonce_matches_rejects_empty_presented(): void {
+		$this->assertFalse( GF_Chip_Card_Update::nonce_matches( 'abc123', '' ) );
+	}
+
+	/**
+	 * consume_link() must clear EVERY component of a live link.
+	 *
+	 * Clearing only some would leave a link partially alive. The list is
+	 * asserted so removing a key fails the test.
+	 */
+	public function test_consume_link_clears_every_component(): void {
+		$keys = GF_Chip_Card_Update::link_meta_keys();
+
+		$this->assertCount( 3, $keys );
+		$this->assertContains( GF_Chip_Card_Update::META_LINK_SIGNATURE, $keys );
+		$this->assertContains( GF_Chip_Card_Update::META_LINK_EXPIRY, $keys );
+		$this->assertContains( GF_Chip_Card_Update::META_LINK_NONCE, $keys );
+		$this->assertSame( $keys, array_unique( $keys ) );
 	}
 }
