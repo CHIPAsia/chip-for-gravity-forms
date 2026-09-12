@@ -291,13 +291,45 @@ class GF_Chip_RenewalsTest extends TestCase {
 	// ---------------------------------------------------------------------
 
 	/**
-	 * The cron hook matches what Gravity Forms schedules.
+	 * The cron hook must match the name Gravity Forms core actually schedules.
 	 *
-	 * Core's setup_cron() builds the hook as "{slug}_cron", so a mismatch
-	 * would mean the cron fires into nothing and renewals never run.
+	 * Core's setup_cron() builds the hook as "{$addon->_slug}_cron", and the
+	 * add-on's slug is 'gravityformschip'. Asserting the literal would only
+	 * re-state the implementation, so this asserts the INVARIANT: the hook
+	 * equals the slug used by the add-on class, plus the '_cron' suffix.
+	 *
+	 * This test exists because the first implementation returned
+	 * 'gf_chip_cron' — a plausible-looking name that core never schedules.
+	 * The cron would have been registered under its own key and the runner
+	 * would never fire, with no error anywhere. Only a live WordPress check
+	 * caught it, so the invariant is pinned here.
 	 */
 	public function test_cron_hook_matches_core_convention(): void {
-		$this->assertSame( 'gf_chip_cron', GF_Chip_Renewals::cron_hook() );
+		$reflection = new \ReflectionClass( \GF_Chip::class );
+		$property   = $reflection->getProperty( '_slug' );
+		$property->setAccessible( true );
+
+		// Read the slug from an instance rather than hardcoding it, so the
+		// test follows the add-on if the slug is ever changed.
+		$instance = $reflection->newInstanceWithoutConstructor();
+		$slug     = $property->getValue( $instance );
+
+		$this->assertNotEmpty( $slug, 'the add-on must define a slug' );
+		$this->assertSame(
+			$slug . '_cron',
+			GF_Chip_Renewals::cron_hook(),
+			'cron hook must be "{$slug}_cron", the exact key core schedules in setup_cron()'
+		);
+	}
+
+	/**
+	 * The hook is not a hand-rolled name that core would never schedule.
+	 *
+	 * A regression guard on the specific defect: any value that is not
+	 * "gravityformschip_cron" is wrong, however plausible it looks.
+	 */
+	public function test_cron_hook_is_not_a_made_up_name(): void {
+		$this->assertSame( 'gravityformschip_cron', GF_Chip_Renewals::cron_hook() );
 	}
 
 	// ---------------------------------------------------------------------

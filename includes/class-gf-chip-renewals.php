@@ -82,36 +82,41 @@ class GF_Chip_Renewals {
 	/**
 	 * The cron hook Gravity Forms schedules for us.
 	 *
+	 * Core builds this as "{$slug}_cron" in GFPaymentAddOn::setup_cron(),
+	 * where the slug is the add-on's _slug. Ours is 'gravityformschip'.
+	 * Getting it wrong means the runner is never invoked at all and renewals
+	 * silently never happen, so a test asserts the exact value.
+	 *
 	 * @return string
 	 */
 	public static function cron_hook() {
-		return 'gf_chip_cron';
+		return 'gravityformschip_cron';
 	}
 
 	/**
-	 * Registers the cron handler and ensures the schedule exists.
+	 * Charges one subscription.
 	 *
-	 * The schedule check runs on every request, not only on activation: a
-	 * site that updates the plugin in place never re-runs the activation
-	 * hook, and renewals would then silently never fire.
+	 * The scheduled action is created entirely by Gravity Forms core: its
+	 * pre_init() calls setup_cron() when the add-on overrides check_status(),
+	 * and setup_cron() schedules "{$slug}_cron" hourly, calling check_status().
+	 * Nothing here schedules or clears a cron — doing so would create a
+	 * second, competing schedule beside core's, and the schedule key would
+	 * not match core's anyway.
 	 *
-	 * @return void
+	 * @param array $entry Entry with chip_sub_* meta flattened in.
+	 * @return array Result with a status of charged|failed|skipped|expired.
 	 */
-	public static function load_hooks() {
-		add_action( self::cron_hook(), array( __CLASS__, 'run' ) );
+	public static function charge( $entry ) {
+		$chip = GF_Chip::get_instance();
 
-		if ( ! wp_next_scheduled( self::cron_hook() ) ) {
-			wp_schedule_event( time(), 'hourly', self::cron_hook() );
+		if ( null === $chip ) {
+			return array(
+				'status' => 'skipped',
+				'note'   => '',
+			);
 		}
-	}
 
-	/**
-	 * Clears the scheduled cron.
-	 *
-	 * @return void
-	 */
-	public static function clear_hooks() {
-		wp_clear_scheduled_hook( self::cron_hook() );
+		return $chip->charge_renewal( $entry );
 	}
 
 	// -----------------------------------------------------------------

@@ -1642,10 +1642,294 @@ class GF_Chip extends GFPaymentAddOn {
 		$this->log_debug( __METHOD__ . '(): confirmation is non redirect type for entry id: #' . $entry_id );
 	}
 
-	// This method content can be inspired from gravityformsauthorizenet.
-	// This method used for subscription for gravityformsauthorizenet.
-	// public function check_status() {
-	// }.
+	/**
+	 * Cron entry point for subscriptions, called hourly by Gravity Forms core.
+	 *
+	 * Core schedules this in pre_init() -> setup_cron() when the add-on
+	 * overrides this method, so overriding it is what turns the cron on at
+	 * all; an empty body would schedule a cron that does nothing.
+	 *
+	 * @return array Summary counts for logging and manual runs.
+	 */
+	public function check_status() {
+		$summary = array(
+			'checked' => 0,
+			'charged' => 0,
+			'failed'  => 0,
+			'skipped' => 0,
+		);
+
+		foreach ( $this->get_due_subscription_entries() as $entry ) {
+			++$summary['checked'];
+
+			$result = GF_Chip_Renewals::charge( $entry );
+
+			switch ( rgar( $result, 'status' ) ) {
+				case 'charged':
+					++$summary['charged'];
+					break;
+				case 'failed':
+					++$summary['failed'];
+					break;
+				default:
+					++$summary['skipped'];
+			}
+		}
+
+		if ( $summary['checked'] > 0 ) {
+			$this->log_debug( __METHOD__ . '(): ' . wp_json_encode( $summary ) );
+		}
+
+		return $summary;
+	}
+
+	/**
+	 * Charges one subscription after the renewal engine has decided it is due.
+	 *
+	 * The schedule is advanced BEFORE the charge is attempted. A crash
+	 * mid-charge then costs one billing cycle, recoverable from the entry
+	 * notes, rather than re-charging the customer on the next cron run.
+	 *
+	 * @param array $entry Entry with chip_sub_* meta flattened in.
+	 * @return array Result with a status of charged|failed|skipped|expired.
+	 */
+	public function charge_renewal( $entry ) {
+		$entry_id = rgar( $entry, 'id' );
+
+		$form = GFAPI::get_form( rgar( $entry, 'form_id' ) );
+		$feed = $this->get_payment_feed( $entry, $form );
+
+		if ( empty( $feed ) ) {
+			$this->log_debug( __METHOD__ . "(): No feed for entry #{$entry_id}." );
+			return array(
+				'status' => 'skipped',
+				'note'   => '',
+			);
+		}
+
+		$now       = gmdate( 'Y-m-d H:i:s' );
+		$length    = (int) rgars( $feed, 'meta/billingCycle_length' );
+		$unit      = (string) rgars( $feed, 'meta/billingCycle_unit' );
+		$remaining = (int) rgars( $feed, 'meta/recurringTimes' );
+
+		$plan = GF_Chip_Renewals::plan_renewal(
+			$entry,
+			$now,
+			$length > 0 ? $length : 1,
+			$unit,
+			$remaining
+		);
+
+		if ( 'charge' !== $plan['action'] ) {
+			return array(
+				'status' => 'skipped',
+				'note'   => '',
+			);
+		}
+
+		$form_id = rgar( $form, 'id' );
+
+		// Advance first. Everything after this point may fail without the
+		// customer being charged twice on a later run.
+		if ( null !== $plan['claim'] ) {
+			gform_update_meta( $entry_id, 'chip_sub_next_payment', $plan['claim'], $form_id );
+		}
+		gform_update_meta( $entry_id, 'chip_sub_remaining', $plan['remaining'], $form_id );
+
+		// Claim the subscription with a lock so two concurrent cron runs
+		// cannot both charge it.
+		$lock = 'chip_gf_renewal_' . $entry_id;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- MySQL advisory lock, same pattern the callback path already uses.
+		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT GET_LOCK(%s, 5)', $lock ) );
+
+		$token    = rgar( $entry, 'chip_recurring_token' );
+		$purchase = gform_get_meta( $entry_id, 'chip_payment_id' );
+
+		if ( empty( $token ) || empty( $purchase ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
+			$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
+			return array(
+				'status' => 'skipped',
+				'note'   => '',
+			);
+		}
+
+		$credentials = $this->get_credentials_for_feed( $feed );
+		$chip        = GF_CHIP_API::get_instance( $credentials['secret_key'], $credentials['brand_id'] );
+
+		$result = $chip->charge_recurring( $purchase, $token );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
+		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
+
+		if ( ! is_array( $result ) || empty( $result['id'] ) ) {
+			return $this->handle_renewal_failure( $entry, $feed, $purchase, $result, $plan );
+		}
+
+		$status = isset( $result['status'] ) ? (string) $result['status'] : '';
+
+		if ( 'paid' !== $status ) {
+			// The charge is in flight (pending_charge and similar). The
+			// callback settles it, so leave the retry counters alone rather
+			// than treating an unsettled charge as a failure.
+			$this->add_note(
+				$entry_id,
+				sprintf(
+					/* translators: %s: charge status. */
+					esc_html__( 'Renewal charge initiated; awaiting settlement (status: %s).', 'chip-for-gravity-forms' ),
+					$status
+				)
+			);
+
+			gform_update_meta( $entry_id, 'chip_sub_status', 'pending', $form_id );
+
+			return array(
+				'status' => 'charged',
+				'note'   => '',
+			);
+		}
+
+		// Success: clear the dunning counters and, on the final instalment,
+		// expire rather than schedule another cycle.
+		gform_update_meta( $entry_id, 'chip_sub_retry_count', 0, $form_id );
+
+		if ( null === $plan['claim'] ) {
+			gform_update_meta( $entry_id, 'chip_sub_status', 'expired', $form_id );
+			$this->add_note(
+				$entry_id,
+				esc_html__( 'Final subscription payment collected. Subscription complete.', 'chip-for-gravity-forms' ),
+				'success'
+			);
+			return array(
+				'status' => 'expired',
+				'note'   => '',
+			);
+		}
+
+		gform_update_meta( $entry_id, 'chip_sub_status', 'active', $form_id );
+
+		$amount = isset( $result['purchase']['total'] ) ? (int) $result['purchase']['total'] : 0;
+
+		$this->add_note(
+			$entry_id,
+			sprintf(
+				/* translators: 1: formatted amount, 2: next payment date. */
+				esc_html__( 'Renewal charge successful: %1$s. Next payment: %2$s.', 'chip-for-gravity-forms' ),
+				GFCommon::to_money( $amount, rgar( $entry, 'currency' ) ),
+				$plan['claim']
+			),
+			'success'
+		);
+
+		return array(
+			'status' => 'charged',
+			'note'   => '',
+		);
+	}
+
+	/**
+	 * Applies the dunning ladder after a failed renewal charge.
+	 *
+	 * The retry date is measured from the ORIGINAL due date, so a slow cron
+	 * cannot stretch the ladder. When the ladder is exhausted the
+	 * subscription expires rather than retrying forever.
+	 *
+	 * @param array  $entry    Entry.
+	 * @param array  $feed     Payment feed.
+	 * @param string $purchase CHIP purchase id.
+	 * @param mixed  $result   Failed charge response.
+	 * @param array  $plan     Plan produced by the renewal engine.
+	 * @return array Result with a failed status.
+	 */
+	private function handle_renewal_failure( $entry, $feed, $purchase, $result, $plan ) {
+		$entry_id = rgar( $entry, 'id' );
+		$form_id  = rgar( $entry, 'form_id' );
+
+		$retry_count = (int) gform_get_meta( $entry_id, 'chip_sub_retry_count' );
+		++$retry_count;
+
+		gform_update_meta( $entry_id, 'chip_sub_retry_count', $retry_count, $form_id );
+
+		$due_date = rgar( $entry, 'chip_sub_next_payment' );
+		$next     = GF_Chip_Renewals::next_retry_at( $due_date, $retry_count );
+
+		$this->add_note(
+			$entry_id,
+			sprintf(
+				/* translators: 1: attempt number, 2: API response. */
+				esc_html__( 'Renewal charge failed (attempt %1$d). Response: %2$s', 'chip-for-gravity-forms' ),
+				$retry_count,
+				wp_json_encode( $result )
+			),
+			'error'
+		);
+
+		if ( null === $next ) {
+			gform_update_meta( $entry_id, 'chip_sub_status', 'expired', $form_id );
+			gform_update_meta( $entry_id, 'chip_sub_next_payment', '', $form_id );
+
+			$this->add_note(
+				$entry_id,
+				esc_html__( 'Renewal retries exhausted. Subscription expired.', 'chip-for-gravity-forms' ),
+				'error'
+			);
+
+			return array(
+				'status' => 'failed',
+				'note'   => '',
+			);
+		}
+
+		gform_update_meta( $entry_id, 'chip_sub_status', 'on-hold', $form_id );
+		gform_update_meta( $entry_id, 'chip_sub_next_payment', $next, $form_id );
+
+		return array(
+			'status' => 'failed',
+			'note'   => '',
+		);
+	}
+
+	/**
+	 * Finds subscription entries that are due for a renewal attempt.
+	 *
+	 * @return array List of entries with chip_sub_* meta flattened in.
+	 */
+	private function get_due_subscription_entries() {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- cron due-query over the entry meta table; the result must be current, so caching would be incorrect.
+		$entry_ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT entry_id FROM {$wpdb->prefix}gf_entry_meta
+				 WHERE meta_key = %s AND meta_value <= %s
+				 LIMIT %d",
+				'chip_sub_next_payment',
+				gmdate( 'Y-m-d H:i:s' ),
+				GF_Chip_Renewals::BATCH_SIZE
+			)
+		);
+
+		$entries = array();
+
+		foreach ( (array) $entry_ids as $entry_id ) {
+			$entry = GFAPI::get_entry( (int) $entry_id );
+
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+
+			foreach ( array( 'chip_recurring_token', 'chip_sub_next_payment', 'chip_sub_status', 'chip_sub_retry_count' ) as $key ) {
+				$entry[ $key ] = gform_get_meta( (int) $entry_id, $key );
+			}
+
+			if ( GF_Chip_Renewals::is_due( $entry, gmdate( 'Y-m-d H:i:s' ) ) ) {
+				$entries[] = $entry;
+			}
+		}
+
+		return $entries;
+	}
 
 	/**
 	 * Supported notification events for this addon.
