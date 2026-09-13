@@ -132,6 +132,8 @@ class GF_Chip extends GFPaymentAddOn {
 		// Inspired by gravityformsstripe.
 		add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
 		add_action( 'wp', array( 'GF_Chip_Card_Update_Page', 'maybe_handle' ), 4 );
+		add_action( 'admin_post_chip_send_card_update', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_send' ) );
+		GF_Chip_Renewal_Notifications::register();
 		add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
 		add_action( 'wp_ajax_gf_chip_get_global_credentials', array( $this, 'ajax_get_global_credentials' ), 10, 0 );
 
@@ -1845,6 +1847,16 @@ class GF_Chip extends GFPaymentAddOn {
 			'success'
 		);
 
+		$this->post_payment_action(
+			$entry,
+			array(
+				'type'           => GF_Chip_Renewal_Notifications::EVENT_RENEWED,
+				'amount'         => $amount,
+				'transaction_id' => rgar( $entry, 'chip_payment_id' ),
+				'payment_status' => 'Paid',
+			)
+		);
+
 		return array(
 			'status' => 'charged',
 			'note'   => '',
@@ -1895,6 +1907,21 @@ class GF_Chip extends GFPaymentAddOn {
 			'error'
 		);
 
+		// Tell the customer. One email per attempt position, so a cron that
+		// runs twice inside a retry window does not send two identical
+		// messages. Sent only to the entry's own address.
+		GF_Chip_Renewal_Notifications::maybe_send_dunning_email( $entry_id, $retry_count );
+
+		$this->post_payment_action(
+			$entry,
+			array(
+				'type'           => GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				'amount'         => rgar( $plan, 'amount' ),
+				'transaction_id' => rgar( $entry, 'chip_payment_id' ),
+				'payment_status' => 'Failed',
+			)
+		);
+
 		if ( null === $next ) {
 			gform_update_meta( $entry_id, 'chip_sub_status', 'expired', $form_id );
 			gform_update_meta( $entry_id, 'chip_sub_next_payment', '', $form_id );
@@ -1903,6 +1930,16 @@ class GF_Chip extends GFPaymentAddOn {
 				$entry_id,
 				esc_html__( 'Renewal retries exhausted. Subscription expired.', 'chip-for-gravity-forms' ),
 				'error'
+			);
+
+			$this->post_payment_action(
+				$entry,
+				array(
+					'type'           => GF_Chip_Renewal_Notifications::EVENT_EXPIRED,
+					'amount'         => rgar( $plan, 'amount' ),
+					'transaction_id' => rgar( $entry, 'chip_payment_id' ),
+					'payment_status' => 'Expired',
+				)
 			);
 
 			return array(
@@ -1969,9 +2006,12 @@ class GF_Chip extends GFPaymentAddOn {
 	 */
 	public function supported_notification_events( $form ) {
 		return array(
-			'complete_payment' => esc_html__( 'Payment Completed', 'chip-for-gravity-forms' ),
-			'refund_payment'   => esc_html__( 'Payment Refunded', 'chip-for-gravity-forms' ),
-			'fail_payment'     => esc_html__( 'Payment Failed', 'chip-for-gravity-forms' ),
+			'complete_payment'                           => esc_html__( 'Payment Completed', 'chip-for-gravity-forms' ),
+			'refund_payment'                             => esc_html__( 'Payment Refunded', 'chip-for-gravity-forms' ),
+			'fail_payment'                               => esc_html__( 'Payment Failed', 'chip-for-gravity-forms' ),
+			GF_Chip_Renewal_Notifications::EVENT_RENEWED => esc_html__( 'Subscription Renewed', 'chip-for-gravity-forms' ),
+			GF_Chip_Renewal_Notifications::EVENT_FAILED  => esc_html__( 'Subscription Payment Failed', 'chip-for-gravity-forms' ),
+			GF_Chip_Renewal_Notifications::EVENT_EXPIRED => esc_html__( 'Subscription Expired', 'chip-for-gravity-forms' ),
 		);
 	}
 
