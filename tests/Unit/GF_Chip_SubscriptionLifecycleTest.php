@@ -7,7 +7,11 @@
 
 namespace GravityFormsCHIP\Tests\Unit;
 
+use GF_CHIP_API;
 use GF_Chip;
+use GF_Chip_Card_Update;
+use GF_Chip_Test_Meta;
+use GF_Chip_Subscriptions_Page;
 use WP_Mock;
 use PHPUnit\Framework\TestCase;
 
@@ -233,6 +237,130 @@ class GF_Chip_SubscriptionLifecycleTest extends TestCase {
 	/**
 	 * A one-time payment is not a subscription and cannot be cancelled.
 	 */
+	/**
+	 * A cancelled subscription is never due, even with a stale date and token.
+	 *
+	 * The money guard, tested independently of mark_cancelled() clearing meta.
+	 */
+	/**
+	 * cancel() must move the stored state to 'cancelled'.
+	 *
+	 * This is the regression test for a real defect, and it drives the real
+	 * cancel() path rather than the helper it calls -- a test that exercises
+	 * only the helper passes whether or not cancel() actually invokes it, and
+	 * the wiring is exactly what broke.
+	 *
+	 * Before the fix, cancel() revoked the token and deleted the schedule but
+	 * never wrote chip_sub_status. Every admin surface and gate reads
+	 * chip_sub_status, so a cancelled subscription kept rendering as Active and
+	 * kept offering the "Send update-card link" action.
+	 */
+	public function test_cancel_writes_the_cancelled_state(): void {
+		GF_Chip_Test_Meta::reset();
+
+		$entry_id = 42;
+
+		// A live, cancellable subscription.
+		gform_update_meta( $entry_id, 'chip_payment_id', 'pay_123' );
+		gform_update_meta( $entry_id, 'chip_sub_status', 'active' );
+		gform_update_meta( $entry_id, 'chip_recurring_token', 'tok_live' );
+		gform_update_meta( $entry_id, 'chip_sub_next_payment', '2026-10-01 00:00:00' );
+		gform_update_meta( $entry_id, 'chip_sub_retry_count', '2' );
+
+		$entry = array(
+			'id'                    => $entry_id,
+			'form_id'               => 1,
+			'transaction_type'      => '2',
+			'payment_status'        => 'Active',
+			'chip_sub_status'       => 'active',
+			'chip_recurring_token'  => 'tok_live',
+			'chip_sub_next_payment' => '2026-10-01 00:00:00',
+		);
+
+		// CHIP accepts the token deletion.
+		WP_Mock::userFunction( 'wp_remote_request' )
+			->andReturn( array( 'body' => wp_json_encode( array( 'ok' => true ) ) ) );
+		WP_Mock::userFunction( 'wp_remote_retrieve_body' )
+			->andReturnUsing(
+				function ( $r ) {
+					return is_array( $r ) && isset( $r['body'] ) ? $r['body'] : '';
+				}
+			);
+		WP_Mock::userFunction( 'wp_remote_retrieve_response_code' )->andReturn( 200 );
+		WP_Mock::userFunction( 'apply_filters' )->andReturnUsing(
+			function ( $tag, $value ) {
+				return $value;
+			}
+		);
+
+		// Reset the API singleton so the mock reaches a fresh instance.
+		$ref  = new \ReflectionClass( GF_CHIP_API::class );
+		$prop = $ref->getProperty( 'instances' );
+		$prop->setAccessible( true );
+		$prop->setValue( null, array() );
+
+		$addon = $this->getMockBuilder( GF_Chip::class )
+			->disableOriginalConstructor()
+			->onlyMethods( array( 'get_credentials_for_feed' ) )
+			->getMock();
+
+		$addon->method( 'get_credentials_for_feed' )->willReturn(
+			array(
+				'secret_key' => 'sk',
+				'brand_id'   => 'br',
+			)
+		);
+
+		$result = $addon->cancel( $entry, array( 'meta' => array() ) );
+
+		$this->assertTrue( $result, 'cancel() should succeed' );
+		$this->assertSame(
+			'cancelled',
+			gform_get_meta( $entry_id, 'chip_sub_status' ),
+			'cancel() must write chip_sub_status = cancelled'
+		);
+		$this->assertFalse( GF_Chip_Test_Meta::has( $entry_id, 'chip_recurring_token' ) );
+		$this->assertFalse( GF_Chip_Test_Meta::has( $entry_id, 'chip_sub_next_payment' ) );
+	}
+
+	public function test_cancelled_subscription_is_never_due_for_renewal(): void {
+		$entry = array(
+			'id'                    => 42,
+			'form_id'               => 1,
+			'transaction_type'      => '2',
+			'payment_status'        => 'Cancelled',
+			'chip_sub_status'       => 'cancelled',
+			'chip_recurring_token'  => 'tok_still_there',
+			'chip_sub_next_payment' => '2020-01-01 00:00:00',
+		);
+
+		$this->assertFalse(
+			\GF_Chip_Renewals::is_due( $entry, '2026-09-13 00:00:00' ),
+			'a cancelled subscription must never be due, even with a stale date and token'
+		);
+	}
+
+	/**
+	 * A cancelled subscription must not be offered the update-card link.
+	 *
+	 * The link is a capability: it replaces the card that would be charged.
+	 * There is nothing to update once the subscription is cancelled.
+	 */
+	public function test_cancelled_subscription_is_not_offered_a_link(): void {
+		$entry = array(
+			'id'               => 42,
+			'form_id'          => 1,
+			'transaction_type' => '2',
+			'payment_status'   => 'Cancelled',
+			'chip_sub_status'  => 'cancelled',
+		);
+
+		$this->assertFalse(
+			GF_Chip_Card_Update::can_offer_link( $entry ),
+			'a cancelled subscription must not be offered a card-update link'
+		);
+	}
+
 	public function test_cancel_is_refused_for_one_time_payment(): void {
 		$entry = array(
 			'transaction_type' => '1',

@@ -2122,12 +2122,40 @@ class GF_Chip extends GFPaymentAddOn {
 			return false;
 		}
 
-		// Clear the local token and schedule so the renewal engine cannot
-		// pick this subscription up before core updates the entry status.
+		// Clear the local token, schedule and state so the renewal engine
+		// cannot pick this subscription up, and so every admin surface stops
+		// presenting it as live.
+		self::mark_cancelled( $entry_id, rgar( $entry, 'form_id' ) );
+
+		return true;
+	}
+
+	/**
+	 * Moves a subscription's own state to cancelled and clears its schedule.
+	 *
+	 * Extracted from cancel() so the transition is directly testable: cancel()
+	 * itself needs a live CHIP API to revoke the token, but the local state
+	 * change does not, and it is the part that decides what the admin shows
+	 * and whether the link action is offered.
+	 *
+	 * Core sets the GF payment_status to 'Cancelled' separately, in
+	 * cancel_subscription(), which it calls after cancel() returns true.
+	 *
+	 * @param int      $entry_id The entry id.
+	 * @param int|null $form_id  The form id, for gform_update_meta.
+	 * @return void
+	 */
+	public static function mark_cancelled( $entry_id, $form_id = null ) {
+		$entry_id = (int) $entry_id;
+
+		gform_update_meta( $entry_id, 'chip_sub_status', 'cancelled', $form_id );
+
+		// Without a token or a due date the renewal engine cannot charge it.
 		gform_delete_meta( $entry_id, 'chip_recurring_token' );
 		gform_delete_meta( $entry_id, 'chip_sub_next_payment' );
 
-		return true;
+		// Clear the retry position so a future resubscribe starts clean.
+		gform_delete_meta( $entry_id, 'chip_sub_retry_count' );
 	}
 
 	/**
