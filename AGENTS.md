@@ -33,6 +33,74 @@ On POST callbacks with `HTTP_X_SIGNATURE`, the plugin verifies the signature aga
 
 Both `callback()` and `process_webhook_callback()` use MySQL `GET_LOCK('chip_gf_payment_' + $payment_id, 15)` to prevent duplicate processing of the same payment while allowing other payments to run in parallel. The lock is released in `post_callback()`.
 
+## Subscriptions
+
+Subscriptions are a plugin feature, not a Gravity Forms one. Core ships the scaffold — an hourly cron hook, a Cancel button on the entry detail, notification events — but `GFPaymentAddOn::check_status()` is an **empty method** and `creditcard_token_info()` returns an empty array. There is no token table. The renewal engine, the token lifecycle and the card-update flow are all implemented here.
+
+### The scheduler invariant: advance before charge
+
+`GF_Chip_Renewals::plan_renewal()` returns the next-payment date to write **before** the charge is attempted. This is what makes an hourly cron safe to run repeatedly: a second run in the same window sees a future date and skips.
+
+The trade-off is deliberate. A crash after the claim costs one billing cycle, recoverable from the entry notes. A crash before it would **double-charge a real customer**. When the behaviour is ambiguous, resolve it in favour of under-charging.
+
+Two consequences worth knowing before you touch this code:
+
+- Cycles are anchored to the date a payment was **due**, not to `now`. A subscription billed on the 1st stays on the 1st even when the cron runs late.
+- The retry ladder (1, 3, 5 days) is measured from the **original due date** too, so a slow cron cannot stretch it.
+
+### Entry meta keys
+
+State lives in entry meta. There is no custom table — transactions go into `gf_addon_payment_transaction` through `insert_transaction()` with `is_recurring` and the subscription id.
+
+| Key | Meaning |
+|---|---|
+| `chip_recurring_token` | The card token CHIP charges at renewal. Treat as a credential. |
+| `chip_sub_status` | `pending`, `active`, `on-hold`, `cancelled`, `expired` |
+| `chip_sub_next_payment` | UTC datetime of the next attempt (or the retry) |
+| `chip_sub_amount` | Recurring amount in the smallest currency unit |
+| `chip_sub_remaining` | Installments left, or `0` for unlimited |
+| `chip_sub_retry_count` | Position on the dunning ladder |
+| `chip_sub_last_payment` | UTC datetime of the last successful renewal |
+| `chip_dunned_attempt` | Attempt index already emailed, so a retry is not emailed twice |
+| `chip_card_update_signature` / `_expiry` / `_nonce` | The live card-update link |
+
+**`chip_sub_remaining` is read, not just written.** It is resolved through `GF_Chip_Renewals::resolve_remaining()` so a stored value overrides the feed's `recurringTimes`. Re-reading the feed every cycle was a real defect: a 12-installment plan charged forever. The same class of bug appeared twice, so check both sides when changing this.
+
+### Card-only constraint
+
+CHIP's recurring tokens are issued for card payments only. A subscription feed requests a recurring token with `force_recurring` plus a card-only `payment_method_whitelist`, and the Subscription transaction type is withheld entirely when the brand cannot take cards. Do not widen the whitelist — no other method can back a recurring charge.
+
+`platform` must stay `gravityforms`. CHIP does not accept a subscription-specific value, and a made-up one is rejected at charge time.
+
+### The card-update link is a capability
+
+Whoever holds the link can replace the card that will be charged. Every control in `GF_Chip_Card_Update` exists for that reason:
+
+- signed with `wp_hash()` (HMAC-SHA256 over `AUTH_KEY`), compared with `hash_equals()`
+- bound to one entry **and** to its expiry, both inside the signed payload
+- a per-link nonce, so two links for one entry are never identical
+- single use: the signature is stored and cleared on success
+- 7 day default lifetime, filterable via `gf_chip_card_update_expiry_days`
+
+The nonce is not decoration. Without it the payload is `entry_id + expiry`, and because `wp_hash()` is deterministic, two links issued in the same second share a signature — which silently resurrected a **consumed** link. That was found by live testing against the real `wp_hash()`; a stubbed hash hides it.
+
+**No card data is ever entered in the admin.** The customer types their card at CHIP's hosted page. This is the PCI answer, and the reason there is no card field anywhere in this plugin.
+
+### Amount is resolved server-side
+
+`GF_Chip_Card_Update::resolve_amount_cents()` is the only source of the amount, derived from subscription state: a healthy subscription is a free token swap, while an on-hold or past-due one collects the outstanding cycle. The value is never read from a request, so a tampered amount is impossible by construction. Do not add a code path that accepts one.
+
+### Testing this area
+
+The unit tests run against an in-memory entry-meta double (`GF_Chip_Test_Meta` in `tests/bootstrap.php`), **not** empty no-ops. That matters: the previous no-ops returned `''` for every read and discarded every write, which hid four real defects — including a counter that was written but never read back. If you change that double, run the test harness's own tests (`GF_Chip_Test_MetaTest`) and confirm the wiring tests still fail when the double is reverted to no-ops.
+
+Two things a unit test cannot reach here, both seen in practice:
+
+- **real `wp_hash()` determinism** (the nonce collision above)
+- **the rendered HTML and the Forms navigation**, which need a live install
+
+Both have been verified against a live WordPress instance during development. If you change the link or the page, re-verify there rather than trusting the suite.
+
 ## Common Commands
 
 ```bash
