@@ -815,6 +815,39 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * The card-only notice shown when Subscription is the transaction type.
+	 *
+	 * CHIP recurring tokens are card-only, so a subscription checkout cannot
+	 * offer FPX, DuitNow QR or e-wallets. Without this, an administrator
+	 * choosing Subscription had nothing in the UI explaining why the payment
+	 * methods they expect are missing at checkout -- the constraint lived only
+	 * in code comments and the public readme FAQ.
+	 *
+	 * Dependency-gated on transactionType so a one-time feed never shows it.
+	 *
+	 * @return array Field definition for Gravity Forms.
+	 */
+	public static function card_only_notice_field() {
+		$html = sprintf(
+			'<p style="margin:0.5em 0 0;padding:0.6em 0.8em;background:#fff8e5;border-left:4px solid #dba617;max-width:640px;">%s</p>',
+			esc_html__(
+				'Subscriptions are card-only. CHIP issues recurring tokens for cards only, so FPX, DuitNow QR and e-wallets are not available for a subscription feed. One-time forms are unaffected and can still offer every method your CHIP brand has enabled.',
+				'chip-for-gravity-forms'
+			)
+		);
+
+		return array(
+			'name'       => 'chipCardOnlyNotice',
+			'type'       => 'html',
+			'html'       => $html,
+			'dependency' => array(
+				'field'  => 'transactionType',
+				'values' => array( 'subscription' ),
+			),
+		);
+	}
+
+	/**
 	 * Whether the configured brand can accept card payments.
 	 *
 	 * CHIP recurring tokens are card-only, so subscriptions are only offered
@@ -961,6 +994,12 @@ class GF_Chip extends GFPaymentAddOn {
 
 		// Readd transaction type section.
 		$feed_settings_fields[0]['fields'][] = $transaction_type_array;
+
+		// Explain the card-only constraint where the choice is made, but only
+		// when it applies.
+		if ( $this->brand_supports_cards() ) {
+			$feed_settings_fields[0]['fields'][] = self::card_only_notice_field();
+		}
 
 		// Readd product and services section.
 		$feed_settings_fields[] = $product_and_services;
