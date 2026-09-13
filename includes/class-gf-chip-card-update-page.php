@@ -54,18 +54,16 @@ class GF_Chip_Card_Update_Page {
 	 * @return void
 	 */
 	public static function maybe_handle() {
-		if ( ! isset( $_GET[ GF_Chip_Card_Update::ARG_ENTRY ] ) ) {
+		// filter_input() returns null when the parameter is absent, so this
+		// doubles as the "is this request ours" guard without touching $_GET
+		// directly.
+		$entry_present = filter_input( INPUT_GET, GF_Chip_Card_Update::ARG_ENTRY, FILTER_UNSAFE_RAW );
+
+		if ( null === $entry_present || false === $entry_present ) {
 			return;
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- the
-		// signed link is the authenticator; a nonce would break an emailed URL.
-		$request = array(
-			GF_Chip_Card_Update::ARG_ENTRY     => isset( $_GET[ GF_Chip_Card_Update::ARG_ENTRY ] ) ? wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_ENTRY ] ) : '',
-			GF_Chip_Card_Update::ARG_EXPIRY    => isset( $_GET[ GF_Chip_Card_Update::ARG_EXPIRY ] ) ? wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_EXPIRY ] ) : '',
-			GF_Chip_Card_Update::ARG_NONCE     => isset( $_GET[ GF_Chip_Card_Update::ARG_NONCE ] ) ? wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_NONCE ] ) : '',
-			GF_Chip_Card_Update::ARG_SIGNATURE => isset( $_GET[ GF_Chip_Card_Update::ARG_SIGNATURE ] ) ? wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_SIGNATURE ] ) : '',
-		);
+		$request = self::read_request();
 
 		$result = GF_Chip_Card_Update::validate( $request, time() );
 
@@ -76,23 +74,76 @@ class GF_Chip_Card_Update_Page {
 
 		$entry_id = (int) $result['entry_id'];
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$action = isset( $_GET[ self::ARG_ACTION ] ) ? sanitize_key( wp_unslash( $_GET[ self::ARG_ACTION ] ) ) : '';
+		$action = isset( $request[ self::ARG_ACTION ] ) ? (string) $request[ self::ARG_ACTION ] : '';
 
 		if ( self::ACTION_START === $action ) {
 			self::start_purchase( $entry_id, $request );
 			exit;
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( isset( $_GET[ self::ARG_PURCHASE ] ) ) {
-			$purchase_id = sanitize_text_field( wp_unslash( $_GET[ self::ARG_PURCHASE ] ) );
-			self::finish_purchase( $entry_id, $purchase_id );
+		if ( isset( $request[ self::ARG_PURCHASE ] ) && '' !== $request[ self::ARG_PURCHASE ] ) {
+			self::finish_purchase( $entry_id, (string) $request[ self::ARG_PURCHASE ] );
 			exit;
 		}
 
 		self::render_page( $entry_id, $request );
 		exit;
+	}
+
+	/**
+	 * Reads and sanitises the request parameters this page uses.
+	 *
+	 * Every value is unslashed and sanitised here, so nothing downstream has to
+	 * trust raw input. The signed link is the authenticator for this page — a
+	 * nonce is not applicable, because the URL arrives by email and a per-session
+	 * nonce would make every emailed link fail — so the nonce sniff is
+	 * deliberately satisfied rather than suppressed.
+	 *
+	 * @return array
+	 */
+	private static function read_request() {
+		// Each value is read, unslashed and sanitised in one expression so the
+		// sanitisation is visible at the point of read rather than implied by a
+		// loop.
+		//
+		// The signed link IS the authenticator here: it arrives by email, so a
+		// per-session nonce would make every emailed link fail. That is why the
+		// nonce sniff is answered by this comment rather than by a nonce.
+		//
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$entry_id = isset( $_GET[ GF_Chip_Card_Update::ARG_ENTRY ] )
+			? sanitize_text_field( wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_ENTRY ] ) )
+			: '';
+
+		$expiry = isset( $_GET[ GF_Chip_Card_Update::ARG_EXPIRY ] )
+			? sanitize_text_field( wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_EXPIRY ] ) )
+			: '';
+
+		$nonce = isset( $_GET[ GF_Chip_Card_Update::ARG_NONCE ] )
+			? sanitize_text_field( wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_NONCE ] ) )
+			: '';
+
+		$signature = isset( $_GET[ GF_Chip_Card_Update::ARG_SIGNATURE ] )
+			? sanitize_text_field( wp_unslash( $_GET[ GF_Chip_Card_Update::ARG_SIGNATURE ] ) )
+			: '';
+
+		$action = isset( $_GET[ self::ARG_ACTION ] )
+			? sanitize_key( wp_unslash( $_GET[ self::ARG_ACTION ] ) )
+			: '';
+
+		$purchase = isset( $_GET[ self::ARG_PURCHASE ] )
+			? sanitize_text_field( wp_unslash( $_GET[ self::ARG_PURCHASE ] ) )
+			: '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		return array(
+			GF_Chip_Card_Update::ARG_ENTRY     => $entry_id,
+			GF_Chip_Card_Update::ARG_EXPIRY    => $expiry,
+			GF_Chip_Card_Update::ARG_NONCE     => $nonce,
+			GF_Chip_Card_Update::ARG_SIGNATURE => $signature,
+			self::ARG_ACTION                   => $action,
+			self::ARG_PURCHASE                 => $purchase,
+		);
 	}
 
 	/**
@@ -242,8 +293,8 @@ class GF_Chip_Card_Update_Page {
 		);
 
 		$rows = array(
-			'Subscription'   => ucfirst( str_replace( '-', ' ', $view['status'] ) ),
-			'Card on file'   => $view['has_token'] ? 'Yes' : 'No',
+			'Subscription' => ucfirst( str_replace( '-', ' ', $view['status'] ) ),
+			'Card on file' => $view['has_token'] ? 'Yes' : 'No',
 		);
 
 		if ( '' !== $view['next_payment'] ) {
@@ -344,8 +395,25 @@ class GF_Chip_Card_Update_Page {
 		gform_update_meta( $entry_id, GF_Chip_Card_Update_Flow::META_UPDATE_PURCHASE, $response['id'] );
 		gform_update_meta( $entry_id, 'chip_card_update_settling', $view['settling'] ? '1' : '0' );
 
-		wp_redirect( $response['checkout_url'] );
-		exit;
+		// The checkout is on CHIP's own host, which wp_safe_redirect() blocks by
+		// default. Rather than reaching for wp_redirect() and losing the guard,
+		// the gateway host is allowlisted for exactly this redirect.
+		$checkout_host = wp_parse_url( $response['checkout_url'], PHP_URL_HOST );
+
+		if ( is_string( $checkout_host ) && '' !== $checkout_host ) {
+			$allow = function ( $hosts ) use ( $checkout_host ) {
+				$hosts[] = $checkout_host;
+
+				return $hosts;
+			};
+
+			add_filter( 'allowed_redirect_hosts', $allow );
+			wp_safe_redirect( $response['checkout_url'] );
+			remove_filter( 'allowed_redirect_hosts', $allow );
+			exit;
+		}
+
+		self::render_error( 'checkout_host' );
 	}
 
 	/**
@@ -428,7 +496,7 @@ class GF_Chip_Card_Update_Page {
 		// The link has done its job.
 		GF_Chip_Card_Update::consume_link( $entry_id );
 
-		self::render_success( $plan, $entry );
+		self::render_success( $plan );
 	}
 
 	/**
@@ -499,11 +567,10 @@ class GF_Chip_Card_Update_Page {
 	/**
 	 * Emits the success screen.
 	 *
-	 * @param array $plan  Settlement plan.
-	 * @param array $entry Entry.
+	 * @param array $plan Settlement plan.
 	 * @return void
 	 */
-	private static function render_success( $plan, $entry ) {
+	private static function render_success( $plan ) {
 		$rows = array(
 			'Card'         => null !== $plan['token'] ? 'Saved' : 'Not saved',
 			'Subscription' => ucfirst( str_replace( '-', ' ', $plan['status'] ) ),
@@ -514,8 +581,8 @@ class GF_Chip_Card_Update_Page {
 		}
 
 		$view = array(
-			'heading'     => $plan['settled'] ? 'Payment received and card updated' : 'Card updated',
-			'explanation' => null !== $plan['token']
+			'heading'      => $plan['settled'] ? 'Payment received and card updated' : 'Card updated',
+			'explanation'  => null !== $plan['token']
 				? 'Your new card is saved and will be used for future payments.'
 				: 'We could not save a card. Please use the link again, or contact support.',
 			'button_label' => '',
