@@ -131,6 +131,7 @@ class GF_Chip extends GFPaymentAddOn {
 	public function pre_init() {
 		// Inspired by gravityformsstripe.
 		add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
+		add_action( 'wp', array( 'GF_Chip_Card_Update_Page', 'maybe_handle' ), 4 );
 		add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
 		add_action( 'wp_ajax_gf_chip_get_global_credentials', array( $this, 'ajax_get_global_credentials' ), 10, 0 );
 
