@@ -567,13 +567,19 @@ class GF_Chip extends GFPaymentAddOn {
 	/**
 	 * Card payment method group that CHIP recurring tokens require.
 	 *
-	 * Mirrors chip-for-woocommerce's CARD_GROUP. Recurring tokens are
-	 * card-only, so a subscription cannot be offered FPX, DuitNow QR or the
-	 * e-wallets even though a one-time payment can.
+	 * Mirrors chip-for-woocommerce's CARD_GROUP: the card NETWORKS only.
+	 * Recurring tokens are card-only, so a subscription cannot be offered FPX,
+	 * DuitNow QR or the e-wallets even though a one-time payment can.
+	 *
+	 * Do NOT add the generic 'card' key here. In the sibling plugins 'card' is
+	 * a UI multiselect key that is expanded to these networks before the API
+	 * call; CHIP rejects it outright if sent:
+	 *   HTTP 400 {"payment_method_whitelist":{"0":[{"message":
+	 *   "\"card\" is not a valid choice.","code":"invalid_choice"}]}}
 	 *
 	 * @var array
 	 */
-	const RECURRING_CARD_METHODS = array( 'card', 'visa', 'mastercard', 'maestro' );
+	const RECURRING_CARD_METHODS = array( 'visa', 'mastercard', 'maestro' );
 
 	/**
 	 * Payment method whitelist for a recurring (subscription) purchase.

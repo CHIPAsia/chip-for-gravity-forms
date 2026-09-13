@@ -105,15 +105,34 @@ class GF_Chip_TokenCheckoutTest extends TestCase {
 	}
 
 	/**
-	 * The card group covers the card networks plus the generic 'card' entry.
+	 * Every value sent as payment_method_whitelist must be one CHIP accepts.
+	 *
+	 * This is the regression test for a real defect: the whitelist used to
+	 * include the generic UI key 'card', and CHIP rejected the whole purchase
+	 * with HTTP 400 `"card" is not a valid choice`, so no subscription could
+	 * ever reach checkout. The old assertion was on the plugin's own constant
+	 * output, which cannot detect a wrong value inside it.
+	 *
+	 * The list below is the set of card identifiers CHIP accepts, cross-checked
+	 * against GET /payment_methods/ on the live API.
 	 */
-	public function test_card_whitelist_contains_expected_card_entries(): void {
+	public function test_whitelist_contains_only_identifiers_chip_accepts(): void {
 		$whitelist = GF_Chip::get_recurring_payment_method_whitelist();
 
-		$this->assertContains( 'card', $whitelist );
-		$this->assertContains( 'visa', $whitelist );
-		$this->assertContains( 'mastercard', $whitelist );
-		$this->assertContains( 'maestro', $whitelist );
+		$this->assertSame( array( 'visa', 'mastercard', 'maestro' ), array_values( $whitelist ) );
+
+		// The specific defect: the UI group key must never be sent to the API.
+		$this->assertNotContains( 'card', $whitelist, "'card' is a UI key; CHIP rejects it with invalid_choice" );
+	}
+
+	/**
+	 * The whitelist is 0-indexed, because CHIP rejects an associative array
+	 * with "Expected a list of items but got type dict".
+	 */
+	public function test_whitelist_is_a_zero_indexed_list(): void {
+		$whitelist = GF_Chip::get_recurring_payment_method_whitelist();
+
+		$this->assertSame( range( 0, count( $whitelist ) - 1 ), array_keys( $whitelist ) );
 	}
 
 	/**
@@ -122,9 +141,9 @@ class GF_Chip_TokenCheckoutTest extends TestCase {
 	public function test_whitelist_is_filterable(): void {
 		WP_Mock::onFilter( 'gf_chip_recurring_payment_method_whitelist' )
 			->with( GF_Chip::get_recurring_payment_method_whitelist() )
-			->reply( array( 'card' ) );
+			->reply( array( 'visa' ) );
 
-		$this->assertSame( array( 'card' ), GF_Chip::get_recurring_payment_method_whitelist() );
+		$this->assertSame( array( 'visa' ), GF_Chip::get_recurring_payment_method_whitelist() );
 	}
 
 	// ---------------------------------------------------------------------
