@@ -154,6 +154,20 @@ class GF_Chip_Subscriptions_Page {
 	}
 
 	/**
+	 * Whether the admin may send an update-card link for this subscription.
+	 *
+	 * Uses the same eligibility rule the send itself enforces, so the button
+	 * never appears for a subscription the action would refuse — a cancelled
+	 * subscription has no future charge to redirect.
+	 *
+	 * @param array $entry Entry with chip_sub_* meta flattened in.
+	 * @return bool
+	 */
+	public static function can_send_link( $entry ) {
+		return GF_Chip_Card_Update::can_offer_link( $entry );
+	}
+
+	/**
 	 * Masks a recurring token for display.
 	 *
 	 * A token authorises charges, so the full value never reaches the browser.
@@ -387,6 +401,8 @@ class GF_Chip_Subscriptions_Page {
 		<div class="wrap gform-wrap">
 			<h1><?php esc_html_e( 'CHIP Subscriptions', 'chip-for-gravity-forms' ); ?></h1>
 
+			<?php self::render_notice(); ?>
+
 			<p class="description">
 				<?php esc_html_e( 'Recurring subscriptions collected by the CHIP gateway. Card changes are sent to the customer as a secure link; card data is never entered here.', 'chip-for-gravity-forms' ); ?>
 			</p>
@@ -451,6 +467,11 @@ class GF_Chip_Subscriptions_Page {
 										<?php esc_html_e( 'Cancel', 'chip-for-gravity-forms' ); ?>
 									</a>
 								<?php endif; ?>
+								<?php if ( self::can_send_link( $row ) ) : ?>
+									<a class="button button-small" href="<?php echo esc_url( GF_Chip_Renewal_Notifications::admin_send_url( rgar( $row, 'id' ) ) ); ?>">
+										<?php esc_html_e( 'Send update-card link', 'chip-for-gravity-forms' ); ?>
+									</a>
+								<?php endif; ?>
 							</td>
 						</tr>
 					<?php endforeach; ?>
@@ -461,6 +482,34 @@ class GF_Chip_Subscriptions_Page {
 			<?php self::render_pagination( $total, $page, $status ); ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Renders the outcome notice after an admin send.
+	 *
+	 * Reports the outcome using only the sent entry id; nothing from the
+	 * request is echoed.
+	 *
+	 * @return void
+	 */
+	private static function render_notice() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only outcome flag, no state change.
+		$sent = isset( $_GET['sent'] ) ? absint( wp_unslash( $_GET['sent'] ) ) : 0;
+
+		if ( $sent <= 0 ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+			esc_html(
+				sprintf(
+					/* translators: %d: entry id. */
+					__( 'Update-card link sent for entry #%d.', 'chip-for-gravity-forms' ),
+					$sent
+				)
+			)
+		);
 	}
 
 	/**

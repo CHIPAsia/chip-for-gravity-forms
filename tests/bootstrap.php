@@ -256,6 +256,55 @@ if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
 	}
 }
 
+// WordPress helpers that are absent from this harness but used by the plugin.
+// These are pure functions with no WordPress state, so a faithful stub is safe.
+if ( ! function_exists( 'is_email' ) ) {
+	/**
+	 * Mirrors WordPress' is_email(): a local part, an @, and a domain with a dot.
+	 *
+	 * WordPress' real implementation requires a period in the domain, so
+	 * 'a@b' is invalid while 'a@b.test' is valid.
+	 *
+	 * @param string $email Candidate.
+	 * @return string|false The email when valid, false otherwise.
+	 */
+	function is_email( $email ) {
+		if ( ! is_string( $email ) || strlen( $email ) < 6 ) {
+			return false;
+		}
+
+		if ( false !== strpos( $email, '..' ) ) {
+			return false;
+		}
+
+		$parts = explode( '@', $email );
+
+		if ( 2 !== count( $parts ) ) {
+			return false;
+		}
+
+		list( $local, $domain ) = $parts;
+
+		if ( '' === $local || '' === $domain ) {
+			return false;
+		}
+
+		if ( false === strpos( $domain, '.' ) ) {
+			return false;
+		}
+
+		if ( ! preg_match( '/^[a-zA-Z0-9!#$%&\'*+\/=?^_`{|}~.-]+$/', $local ) ) {
+			return false;
+		}
+
+		if ( ! preg_match( '/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/', $domain ) ) {
+			return false;
+		}
+
+		return $email;
+	}
+}
+
 if ( ! function_exists( 'gform_update_meta' ) ) {
 	function gform_update_meta( $entry_id, $meta_key, $meta_value, $form_id = null ) {
 		return GF_Chip_Test_Meta::set( $entry_id, $meta_key, $meta_value );
@@ -438,3 +487,4 @@ require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.ph
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update-flow.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update-page.php';
+require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-renewal-notifications.php';
