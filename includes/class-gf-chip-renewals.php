@@ -130,18 +130,30 @@ class GF_Chip_Renewals {
 	 *
 	 * @param array  $entry Entry array with chip_sub_* meta flattened in.
 	 * @param string $now   Current UTC time, 'Y-m-d H:i:s'.
+	 * @param bool   $force Attempt a charge even when the subscription is
+	 *                      on-hold. Used only by an operator-initiated retry;
+	 *                      the cron must never set this, or it would bypass the
+	 *                      dunning ladder on every run.
 	 * @return bool
 	 */
-	public static function is_due( $entry, $now ) {
+	public static function is_due( $entry, $now, $force = false ) {
 		// A one-time payment is not a subscription. Checked explicitly rather
 		// than relying on chip_sub_status, which a stray meta write could set.
 		if ( ! GF_Chip::is_subscription_entry( $entry ) ) {
 			return false;
 		}
 
-		// Only an active subscription is charged. Cancelled, expired,
-		// on-hold and pending are all deliberately excluded.
-		if ( 'active' !== GF_Chip::get_subscription_state( $entry ) ) {
+		// Only an active subscription is charged by the cron. Cancelled,
+		// expired, pending and on-hold are all deliberately excluded -- on-hold
+		// specifically because the dunning ladder owns it and a cron that
+		// ignored that would fire a charge on every run.
+		//
+		// $force is the operator override: a human pressed Retry, so an
+		// on-hold subscription may be attempted. It still consumes a ladder
+		// slot, so it cannot be used to spam charges.
+		$state = GF_Chip::get_subscription_state( $entry );
+
+		if ( 'active' !== $state && ! ( $force && 'on-hold' === $state ) ) {
 			return false;
 		}
 
@@ -326,6 +338,9 @@ class GF_Chip_Renewals {
 	 * @param int    $length Billing cycle length.
 	 * @param string $unit   Billing cycle unit.
 	 * @param int    $remaining Remaining cycles, 0 meaning infinite.
+	 * @param bool   $force     Attempt a charge even when on-hold. Only the
+	 *                          operator-initiated retry sets this; the cron
+	 *                          must not, or it would bypass the ladder.
 	 * @return array {
 	 *     @type string      $action    charge|skip|expire.
 	 *     @type string|null $claim     Next payment date to write before charging.
@@ -333,8 +348,8 @@ class GF_Chip_Renewals {
 	 *     @type int         $remaining Remaining cycles after this one.
 	 * }
 	 */
-	public static function plan_renewal( $entry, $now, $length, $unit, $remaining ) {
-		if ( ! self::is_due( $entry, $now ) ) {
+	public static function plan_renewal( $entry, $now, $length, $unit, $remaining, $force = false ) {
+		if ( ! self::is_due( $entry, $now, $force ) ) {
 			return array(
 				'action'     => 'skip',
 				'claim'      => null,

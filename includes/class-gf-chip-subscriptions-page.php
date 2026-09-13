@@ -89,6 +89,42 @@ class GF_Chip_Subscriptions_Page {
 	// -----------------------------------------------------------------
 
 	/**
+	 * Reports the result of a manual retry, if one just ran.
+	 *
+	 * The handler redirects here with ?retry=<status>, so the operator sees
+	 * what happened rather than being returned to an unchanged list.
+	 *
+	 * @return void
+	 */
+	public static function render_retry_notice() {
+		// Read-only display of a redirect parameter: no state changes here, so
+		// no nonce is required.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only redirect flag.
+		$retry = isset( $_GET['retry'] ) ? sanitize_key( wp_unslash( $_GET['retry'] ) ) : '';
+
+		if ( '' === $retry ) {
+			return;
+		}
+
+		$messages = array(
+			'charged' => array( 'success', __( 'Retry succeeded: the outstanding payment was collected.', 'chip-for-gravity-forms' ) ),
+			'failed'  => array( 'error', __( 'Retry declined by the gateway. The subscription remains on hold and the attempt has been counted.', 'chip-for-gravity-forms' ) ),
+			'skipped' => array( 'warning', __( 'Nothing to retry: the subscription is not due, or has no stored card.', 'chip-for-gravity-forms' ) ),
+			'refused' => array( 'error', __( 'Retry refused: only a live subscription with a stored card can be retried.', 'chip-for-gravity-forms' ) ),
+		);
+
+		if ( ! isset( $messages[ $retry ] ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			esc_attr( $messages[ $retry ][0] ),
+			esc_html( $messages[ $retry ][1] )
+		);
+	}
+
+	/**
 	 * Human label for a subscription state.
 	 *
 	 * @param string $state One of GF_Chip::SUBSCRIPTION_STATES.
@@ -458,9 +494,9 @@ class GF_Chip_Subscriptions_Page {
 							<td><?php echo absint( rgar( $row, 'chip_sub_retry_count' ) ); ?></td>
 							<td>
 								<?php if ( self::can_retry( $row ) ) : ?>
-									<button type="button" class="button button-small" disabled title="<?php esc_attr_e( 'Retry on demand is not enabled in this release.', 'chip-for-gravity-forms' ); ?>">
+									<a class="button button-small" href="<?php echo esc_url( GF_Chip_Renewal_Notifications::admin_retry_url( rgar( $row, 'id' ) ) ); ?>">
 										<?php esc_html_e( 'Retry now', 'chip-for-gravity-forms' ); ?>
-									</button>
+									</a>
 								<?php endif; ?>
 								<?php if ( self::can_cancel( $row ) ) : ?>
 									<a class="button button-small" href="<?php echo esc_url( self::entry_url( rgar( $row, 'id' ) ) ); ?>">
@@ -478,6 +514,8 @@ class GF_Chip_Subscriptions_Page {
 				<?php endif; ?>
 				</tbody>
 			</table>
+
+			<?php self::render_retry_notice(); ?>
 
 			<?php self::render_pagination( $total, $page, $status ); ?>
 		</div>
