@@ -1938,8 +1938,14 @@ class GF_Chip extends GFPaymentAddOn {
 		);
 		gform_update_meta( $entry_id, 'chip_sub_remaining', $remaining, $form_id );
 
-		$due_date = rgar( $entry, 'chip_sub_next_payment' );
-		$next     = GF_Chip_Renewals::next_retry_at( $due_date, $retry_count );
+		// Anchor the ladder on the date that was DUE, taken from the plan --
+		// never by re-reading chip_sub_next_payment, which the pre-charge
+		// advance has already moved a cycle forward.
+		$next = GF_Chip_Renewals::next_attempt_from_plan( $plan, $retry_count );
+
+		if ( null === $next ) {
+			$this->log_debug( __METHOD__ . '(): ladder exhausted or no due anchor for entry #' . $entry_id . '.' );
+		}
 
 		$this->add_note(
 			$entry_id,

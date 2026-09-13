@@ -199,6 +199,34 @@ class GF_Chip_Renewals {
 	}
 
 	/**
+	 * The next attempt time after a failed charge, anchored on the plan.
+	 *
+	 * The ladder must be measured from the date that was DUE. Reading
+	 * chip_sub_next_payment here would return the date the pre-charge advance
+	 * already wrote -- one whole cycle ahead -- so the retry would fire on the
+	 * next billing date instead of a day after the miss, giving the customer a
+	 * free cycle. The plan carries the value it actually anchored on.
+	 *
+	 * Extracted so the wiring is testable: the caller path needs a live CHIP
+	 * API, this decision does not.
+	 *
+	 * @param array $plan        A plan_renewal() result.
+	 * @param int   $retry_count Failed attempts so far, including this one.
+	 * @return string|null UTC datetime, or null when the ladder is exhausted.
+	 */
+	public static function next_attempt_from_plan( $plan, $retry_count ) {
+		$anchor = rgar( (array) $plan, 'due_anchor' );
+
+		if ( empty( $anchor ) ) {
+			// No anchor means there is no safe retry time. Expire rather than
+			// schedule an attempt against an unknown date.
+			return null;
+		}
+
+		return self::next_retry_at( $anchor, $retry_count );
+	}
+
+	/**
 	 * Resolves how many installments remain for a subscription.
 	 *
 	 * A finite plan must count down across cycles, so the stored counter wins
@@ -301,26 +329,31 @@ class GF_Chip_Renewals {
 	 * @return array {
 	 *     @type string      $action    charge|skip|expire.
 	 *     @type string|null $claim     Next payment date to write before charging.
+	 *     @type string|null $due_anchor The due date this plan was anchored on.
 	 *     @type int         $remaining Remaining cycles after this one.
 	 * }
 	 */
 	public static function plan_renewal( $entry, $now, $length, $unit, $remaining ) {
 		if ( ! self::is_due( $entry, $now ) ) {
 			return array(
-				'action'    => 'skip',
-				'claim'     => null,
-				'remaining' => (int) $remaining,
+				'action'     => 'skip',
+				'claim'      => null,
+				'remaining'  => (int) $remaining,
+				'due_anchor' => null,
 			);
 		}
 
 		// Anchor the cycle on the date that was due, not on "now", so a late
 		// cron run does not drift the billing day forward.
-		$anchor = self::to_timestamp( rgar( $entry, 'chip_sub_next_payment' ) );
+		$due_date = (string) rgar( $entry, 'chip_sub_next_payment' );
+		$anchor   = self::to_timestamp( $due_date );
+
 		if ( false === $anchor ) {
 			return array(
-				'action'    => 'skip',
-				'claim'     => null,
-				'remaining' => (int) $remaining,
+				'action'     => 'skip',
+				'claim'      => null,
+				'remaining'  => (int) $remaining,
+				'due_anchor' => null,
 			);
 		}
 
@@ -331,16 +364,18 @@ class GF_Chip_Renewals {
 			// This was the final instalment: charge it, then expire rather
 			// than schedule another cycle.
 			return array(
-				'action'    => 'charge',
-				'claim'     => null,
-				'remaining' => 0,
+				'action'     => 'charge',
+				'claim'      => null,
+				'remaining'  => 0,
+				'due_anchor' => $due_date,
 			);
 		}
 
 		return array(
-			'action'    => 'charge',
-			'claim'     => $cycle['next']->format( 'Y-m-d H:i:s' ),
-			'remaining' => (int) $cycle['remaining'],
+			'action'     => 'charge',
+			'claim'      => $cycle['next']->format( 'Y-m-d H:i:s' ),
+			'remaining'  => (int) $cycle['remaining'],
+			'due_anchor' => $due_date,
 		);
 	}
 }

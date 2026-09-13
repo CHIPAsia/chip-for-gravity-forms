@@ -100,6 +100,195 @@ if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
 	/**
 	 * Test double for the Gravity Forms entry meta store.
 	 */
+	/**
+	 * Staged feed for tests that need to drive a real payment path.
+	 *
+	 * The framework's get_payment_feed() stub used to return an empty array
+	 * unconditionally, which meant any code past that point could not be
+	 * exercised. Staging a feed makes those paths reachable.
+	 */
+	/**
+	 * Minimal $wpdb stand-in for advisory-lock calls.
+	 *
+	 * The renewal path takes a MySQL GET_LOCK before charging. Tests do not need
+	 * real locking, only for the call to not fatal.
+	 */
+	if ( ! isset( $GLOBALS['wpdb'] ) ) {
+		$GLOBALS['wpdb'] = new class() {
+			/**
+			 * Table prefix.
+			 *
+			 * @var string
+			 */
+			public $prefix = 'wp_';
+
+			/**
+			 * Runs a query, returning an empty result set.
+			 *
+			 * @param string $query The SQL.
+			 * @return array
+			 */
+			public function get_results( $query = '' ) {
+				return array();
+			}
+
+			/**
+			 * Prepares a query.
+			 *
+			 * @param string $query The SQL.
+			 * @param mixed  ...$args Arguments.
+			 * @return string
+			 */
+			public function prepare( $query, ...$args ) {
+				return $query;
+			}
+
+			/**
+			 * Runs a query.
+			 *
+			 * @param string $query The SQL.
+			 * @return int
+			 */
+			public function query( $query = '' ) {
+				return 0;
+			}
+		};
+	}
+
+	/**
+	 * Minimal GFAPI stand-in for tests that drive a real payment path.
+	 *
+	 * Only the calls the renewal path makes are implemented. Form and entry
+	 * lookups return whatever a test has staged, so the charge path can run
+	 * without a live WordPress.
+	 */
+	class GFAPI {
+
+		/**
+		 * Staged form.
+		 *
+		 * @var array
+		 */
+		private static $form = array();
+
+		/**
+		 * Staged entries by id.
+		 *
+		 * @var array
+		 */
+		private static $entries = array();
+
+		/**
+		 * Stage a form.
+		 *
+		 * @param array $form The form.
+		 * @return void
+		 */
+		public static function set_form( array $form ) {
+			self::$form = $form;
+		}
+
+		/**
+		 * Stage an entry.
+		 *
+		 * @param array $entry The entry, including its id.
+		 * @return void
+		 */
+		public static function set_entry( array $entry ) {
+			self::$entries[ (int) $entry['id'] ] = $entry;
+		}
+
+		/**
+		 * Clear all staged data.
+		 *
+		 * @return void
+		 */
+		public static function reset() {
+			self::$form    = array();
+			self::$entries = array();
+		}
+
+		/**
+		 * Staged form.
+		 *
+		 * @param int $id Form id.
+		 * @return array
+		 */
+		public static function get_form( $id ) {
+			return self::$form;
+		}
+
+		/**
+		 * Staged entry.
+		 *
+		 * @param int $id Entry id.
+		 * @return array|WP_Error
+		 */
+		public static function get_entry( $id ) {
+			$id = (int) $id;
+
+			return isset( self::$entries[ $id ] ) ? self::$entries[ $id ] : new WP_Error( 'not_found', 'no entry' );
+		}
+
+		/**
+		 * Update a property on a staged entry.
+		 *
+		 * @param int    $id       Entry id.
+		 * @param string $property Property name.
+		 * @param mixed  $value    Value.
+		 * @return bool
+		 */
+		public static function update_entry_property( $id, $property, $value ) {
+			$id = (int) $id;
+
+			if ( ! isset( self::$entries[ $id ] ) ) {
+				return false;
+			}
+
+			self::$entries[ $id ][ $property ] = $value;
+
+			return true;
+		}
+	}
+
+	class GF_Chip_Test_Feed {
+
+		/**
+		 * The staged feed.
+		 *
+		 * @var array
+		 */
+		private static $feed = array();
+
+		/**
+		 * Stage a feed for the next call.
+		 *
+		 * @param array $feed The feed object.
+		 * @return void
+		 */
+		public static function set( array $feed ) {
+			self::$feed = $feed;
+		}
+
+		/**
+		 * The staged feed.
+		 *
+		 * @return array
+		 */
+		public static function get() {
+			return self::$feed;
+		}
+
+		/**
+		 * Clear the staged feed.
+		 *
+		 * @return void
+		 */
+		public static function reset() {
+			self::$feed = array();
+		}
+	}
+
 	class GF_Chip_Test_Meta {
 
 		/**
@@ -452,8 +641,43 @@ if ( ! class_exists( 'GFPaymentAddOn' ) ) {
 		public function add_note( $entry_id, $note, $note_type = 'info' ) {
 		}
 
+		/**
+		 * Returns the feed a test has staged, or an empty array.
+		 *
+		 * Configurable so a test can drive the real charge path without a live
+		 * WordPress: previously this always returned an empty array, which made
+		 * everything downstream of it unreachable from a unit test.
+		 *
+		 * @param array       $entry The entry.
+		 * @param array|false $form  The form.
+		 * @return array
+		 */
 		public function get_payment_feed( $entry, $form = false ) {
-			return array();
+			return GF_Chip_Test_Feed::get();
+		}
+
+		/**
+		 * Records the action a test caused, instead of dispatching it.
+		 *
+		 * @param array $entry  The entry.
+		 * @param array $action The action payload.
+		 * @return void
+		 */
+		public function post_payment_action( $entry, $action ) {
+		}
+
+		/**
+		 * Inserts a transaction row. No-op in tests.
+		 *
+		 * @param int         $entry_id      Entry id.
+		 * @param string      $type          Transaction type.
+		 * @param string|null $transaction_id Transaction id.
+		 * @param float       $amount        Amount.
+		 * @param bool        $is_recurring  Whether recurring.
+		 * @param string|null $subscription_id Subscription id.
+		 * @return void
+		 */
+		public function insert_transaction( $entry_id, $type, $transaction_id = null, $amount = 0, $is_recurring = false, $subscription_id = null ) {
 		}
 
 		public function is_duplicate_callback( $callback_id ) {
