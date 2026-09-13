@@ -388,6 +388,100 @@ class GF_Chip_Renewal_Notifications {
 	 * @param int $entry_id Entry id.
 	 * @return string
 	 */
+	/**
+	 * URL that triggers an on-demand renewal retry for one subscription.
+	 *
+	 * Nonce-protected and capability-guarded in the handler, mirroring
+	 * admin_send_url().
+	 *
+	 * @param int $entry_id The subscription entry id.
+	 * @return string
+	 */
+	public static function admin_retry_url( $entry_id ) {
+		return wp_nonce_url(
+			add_query_arg(
+				array(
+					'action'   => 'chip_retry_renewal',
+					'entry_id' => (int) $entry_id,
+				),
+				admin_url( 'admin-post.php' )
+			),
+			'chip_retry_renewal_' . (int) $entry_id
+		);
+	}
+
+	/**
+	 * Handles an on-demand renewal retry.
+	 *
+	 * A retry COUNTS AS AN ATTEMPT (OQ7): it goes through the same charge path
+	 * the cron uses, so chip_sub_retry_count advances and the dunning ladder
+	 * cannot be bypassed by pressing this repeatedly. The charge path owns the
+	 * increment, so there is exactly one place that counts.
+	 *
+	 * @return void
+	 */
+	public static function handle_admin_retry() {
+		$entry_id = isset( $_GET['entry_id'] ) ? absint( wp_unslash( $_GET['entry_id'] ) ) : 0;
+
+		if ( $entry_id <= 0 ) {
+			wp_die( esc_html__( 'Missing entry.', 'chip-for-gravity-forms' ) );
+		}
+
+		check_admin_referer( 'chip_retry_renewal_' . $entry_id );
+
+		if ( ! current_user_can( GF_Chip_Subscriptions_Page::capability() ) ) {
+			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
+		}
+
+		$addon = GF_Chip::get_instance();
+		$entry = GFAPI::get_entry( $entry_id );
+
+		if ( ! is_array( $entry ) ) {
+			wp_die( esc_html__( 'Entry not found.', 'chip-for-gravity-forms' ) );
+		}
+
+		$entry = GF_Chip_Card_Update::hydrate( $entry );
+
+		// A retry must not resurrect a dead subscription.
+		if ( ! GF_Chip_Subscriptions_Page::can_retry( $entry ) ) {
+			$addon->log_debug( __METHOD__ . '(): entry #' . $entry_id . ' is not retryable.' );
+
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'page'     => GF_Chip_Subscriptions_Page::slug(),
+						'retry'    => 'refused',
+						'entry_id' => $entry_id,
+					),
+					admin_url( 'admin.php' )
+				)
+			);
+			exit;
+		}
+
+		// Force: an operator pressed Retry, so an on-hold subscription may be
+		// attempted. The attempt is still counted by the charge path.
+		$result = $addon->charge_renewal( $entry, true );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'     => GF_Chip_Subscriptions_Page::slug(),
+					'retry'    => is_array( $result ) ? $result['status'] : 'failed',
+					'entry_id' => $entry_id,
+				),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * The nonce-protected admin URL that sends a link for an entry.
+	 *
+	 * @param int $entry_id Entry id.
+	 * @return string
+	 */
 	public static function admin_send_url( $entry_id ) {
 		return wp_nonce_url(
 			add_query_arg(

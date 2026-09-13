@@ -133,6 +133,7 @@ class GF_Chip extends GFPaymentAddOn {
 		add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
 		add_action( 'wp', array( 'GF_Chip_Card_Update_Page', 'maybe_handle' ), 4 );
 		add_action( 'admin_post_chip_send_card_update', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_send' ) );
+		add_action( 'admin_post_chip_retry_renewal', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_retry' ) );
 		GF_Chip_Renewal_Notifications::register();
 		add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
 		add_action( 'wp_ajax_gf_chip_get_global_credentials', array( $this, 'ajax_get_global_credentials' ), 10, 0 );
@@ -1754,9 +1755,13 @@ class GF_Chip extends GFPaymentAddOn {
 	 * notes, rather than re-charging the customer on the next cron run.
 	 *
 	 * @param array $entry Entry with chip_sub_* meta flattened in.
+	 * @param bool  $force Attempt a charge even when the subscription is
+	 *                     on-hold. Set only by the operator-initiated retry;
+	 *                     the cron must never set it, or every run would
+	 *                     bypass the dunning ladder.
 	 * @return array Result with a status of charged|failed|skipped|expired.
 	 */
-	public function charge_renewal( $entry ) {
+	public function charge_renewal( $entry, $force = false ) {
 		$entry_id = rgar( $entry, 'id' );
 
 		$form = GFAPI::get_form( rgar( $entry, 'form_id' ) );
@@ -1787,7 +1792,8 @@ class GF_Chip extends GFPaymentAddOn {
 			$now,
 			$length > 0 ? $length : 1,
 			$unit,
-			$remaining
+			$remaining,
+			$force
 		);
 
 		if ( 'charge' !== $plan['action'] ) {
