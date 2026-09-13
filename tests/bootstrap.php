@@ -436,3 +436,4 @@ require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-schedule.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-renewals.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update.php';
+require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update-flow.php';
