@@ -25,3 +25,8 @@ define( 'GF_CHIP_PLUGIN_FILE', __FILE__ );
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-bootstrap.php';
 
 add_action( 'gform_loaded', array( 'GF_CHIP_Bootstrap', 'load_addon' ), 5 );
+
+// Gravity Forms schedules an hourly renewal cron for this add-on. Clearing it
+// on deactivation stops WordPress firing a dead action forever; the event is
+// rescheduled automatically the next time the plugin is active.
+register_deactivation_hook( __FILE__, array( 'GF_CHIP_Bootstrap', 'clear_scheduled_events' ) );

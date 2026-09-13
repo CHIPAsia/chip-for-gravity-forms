@@ -33,6 +33,25 @@ class GF_CHIP_Bootstrap {
 	}
 
 	/**
+	 * Clears the scheduled renewal cron.
+	 *
+	 * Gravity Forms schedules "{slug}_cron" hourly for any add-on that
+	 * overrides check_status(). That event outlives the plugin: deactivating
+	 * leaves it in WP-Cron with no callback attached, so WordPress fires a dead
+	 * action every hour indefinitely. Gravity Forms core clears its own cron on
+	 * uninstall; this does the same job for ours.
+	 *
+	 * Safe to run on every deactivation. Gravity Forms' setup_cron() guards on
+	 * wp_next_scheduled(), so the next time the plugin is active the event is
+	 * scheduled again — clearing here does not disable renewals permanently.
+	 *
+	 * @return void
+	 */
+	public static function clear_scheduled_events() {
+		wp_clear_scheduled_hook( GF_Chip_Renewals::cron_hook() );
+	}
+
+	/**
 	 * Adds the Settings link to the plugin action links.
 	 *
 	 * @param array $links Plugin action links.
