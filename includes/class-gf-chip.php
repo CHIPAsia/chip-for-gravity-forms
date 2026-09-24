@@ -179,7 +179,12 @@ class GF_Chip extends GFPaymentAddOn {
 	 * @return string
 	 */
 	public function get_menu_icon() {
-		return plugins_url( 'assets/logo.svg', __FILE__ );
+		// Anchored on the plugin's base URL, not on __FILE__. This method
+		// lives in includes/, and plugins_url() resolves a relative path
+		// against the directory of the file passed to it, so the old form
+		// looked for includes/assets/logo.svg. No such directory exists —
+		// the logo ships at the plugin root — and the icon silently 404'd.
+		return $this->get_base_url() . '/assets/logo.svg';
 	}
 
 	/**
@@ -247,7 +252,11 @@ class GF_Chip extends GFPaymentAddOn {
 	 * @return string
 	 */
 	public function get_description() {
-		$img_url = plugins_url( 'assets/form-settings.png', __FILE__ );
+		// Same anchor bug as get_menu_icon(): plugins_url() with __FILE__
+		// resolves against includes/, so this pointed at a screenshot path
+		// that does not exist and the "View configuration screenshot" link
+		// 404'd.
+		$img_url = $this->get_base_url() . '/assets/form-settings.png';
 		ob_start();
 		?>
 		<p>
