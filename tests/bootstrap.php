@@ -594,7 +594,11 @@ if ( ! class_exists( 'GFAddOn' ) ) {
 
 if ( ! class_exists( 'GFPaymentAddOn' ) ) {
 	abstract class GFPaymentAddOn extends GFAddOn {
-		protected $_supports_callbacks = false;
+		/** @var string Absolute path to the plugin entry file. */
+	protected $_full_path = '';
+
+	/** @var bool Whether the add-on supports callbacks. */
+	protected $_supports_callbacks = false;
 		protected $_slug = '';
 		protected $_title = '';
 		protected $_short_title = '';
@@ -856,6 +860,24 @@ if ( ! class_exists( 'GFPaymentAddOn' ) ) {
 
 		public function get_base_url() {
 			return 'https://example.com/wp-content/plugins/chip-for-gravity-forms';
+		}
+
+		/**
+		 * Mirrors GFPaymentAddOn::get_payment_field() (core, since GF 2.4.17)
+		 * exactly, including its 'form_total' fallback.
+		 *
+		 * This matters for faithfulness: the production class calls this
+		 * method, so a double that omitted it would fatal. Keeping core's
+		 * own branch here — rather than a copy of the plugin's — is what
+		 * lets the regression test fail on the old code.
+		 *
+		 * @param array $feed The current feed.
+		 * @return string
+		 */
+		public function get_payment_field( $feed ) {
+			$key = rgars( $feed, 'meta/transactionType' ) === 'subscription' ? 'recurringAmount' : 'paymentAmount';
+
+			return rgars( $feed, 'meta/' . $key, 'form_total' );
 		}
 	}
 }
