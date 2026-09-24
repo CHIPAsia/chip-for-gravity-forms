@@ -2075,22 +2075,84 @@ class GF_Chip extends GFPaymentAddOn {
 	/**
 	 * Completes payment: parent logic and triggers delayed feeds.
 	 *
+	 * This is also where a subscription is activated. Gravity Forms only
+	 * calls process_subscription()/start_subscription() when an
+	 * authorization was performed (core: `if ( ! empty( $this->authorization
+	 * ) )`), and a hosted-redirect gateway performs none — so for CHIP that
+	 * branch is never taken and nothing else ever calls start_subscription().
+	 * Driving it from here is what makes a subscription chargeable at all.
+	 *
 	 * @param array $entry  Entry (by reference).
 	 * @param array $action Callback action.
 	 * @return bool
 	 */
 	public function complete_payment( &$entry, $action ) {
+		$entry_id = rgar( $entry, 'id' );
+		$form     = GFAPI::get_form( rgar( $entry, 'form_id' ) );
+		$feed     = $this->get_payment_feed( $entry, $form );
+
+		// Core's complete_payment() rewrites transaction_type to '1'
+		// unconditionally, so a subscription purchase loses its type here and
+		// every later read of the entry sees a one-time payment. The feed is
+		// read above, before that happens.
 		parent::complete_payment( $entry, $action );
 
 		$transaction_id = rgar( $action, 'transaction_id' );
-		$form           = GFAPI::get_form( $entry['form_id'] );
-		$feed           = $this->get_payment_feed( $entry, $form );
 
 		$this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
 
 		$this->maybe_store_subscription_token( $entry, $feed, $form );
 
+		$this->maybe_activate_subscription( $entry, $feed, $action );
+
 		return true;
+	}
+
+	/**
+	 * Starts the subscription on its first successful payment.
+	 *
+	 * Runs only for a subscription feed and only when no schedule exists yet:
+	 * a renewal settles through this same callback, and the renewal engine
+	 * has already advanced the schedule by then, so re-running activation
+	 * would drift the billing anchor forward on every renewal.
+	 *
+	 * @param array $entry  Entry, after core's complete_payment() ran.
+	 * @param array $feed   The payment feed.
+	 * @param array $action Callback action.
+	 * @return void
+	 */
+	private function maybe_activate_subscription( $entry, $feed, $action ) {
+		if ( 'subscription' !== rgars( $feed, 'meta/transactionType' ) ) {
+			return;
+		}
+
+		$entry_id = (int) rgar( $entry, 'id' );
+
+		if ( '' !== (string) gform_get_meta( $entry_id, 'chip_sub_next_payment' ) ) {
+			return;
+		}
+
+		// The CHIP purchase id identifies both the payment and the
+		// subscription, so passing it as the subscription id keeps
+		// transaction_id pointing at the purchase — which the refund path
+		// needs. Core's start_subscription() writes transaction_id from this
+		// field.
+		$subscription = array(
+			'subscription_id' => (string) gform_get_meta( $entry_id, 'chip_payment_id' ),
+			'amount'          => rgar( $action, 'amount' ),
+			'is_success'      => true,
+		);
+
+		$this->start_subscription( $entry, $subscription );
+
+		// The amount the customer agreed to pay, in the smallest unit. This
+		// is what a settling card update collects, so without it the
+		// resolution falls back to zero and the debt is written off.
+		$amount = (float) rgar( $action, 'amount' );
+
+		if ( $amount > 0 ) {
+			gform_update_meta( $entry_id, 'chip_sub_amount', (int) round( $amount * 100 ), rgar( $entry, 'form_id' ) );
+		}
 	}
 
 	/**
@@ -2201,6 +2263,12 @@ class GF_Chip extends GFPaymentAddOn {
 
 		gform_update_meta( $entry_id, 'chip_sub_status', $cycle['expired'] ? 'expired' : 'active', rgar( $form, 'id' ) );
 		gform_update_meta( $entry_id, 'chip_sub_retry_count', 0, rgar( $form, 'id' ) );
+
+		// The counter must exist from the start. resolve_remaining() prefers a
+		// STORED value, so with nothing stored it re-reads recurringTimes from
+		// the feed every cycle — and a 1-installment plan would then be
+		// scheduled for a second charge.
+		gform_update_meta( $entry_id, 'chip_sub_remaining', (int) $cycle['remaining'], rgar( $form, 'id' ) );
 
 		if ( null !== $cycle['next'] ) {
 			gform_update_meta(
