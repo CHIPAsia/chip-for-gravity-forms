@@ -792,6 +792,142 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * The amount to charge for one renewal cycle, in cents.
+	 *
+	 * Resolution order, most authoritative first:
+	 *
+	 *  1. `chip_sub_amount` — the recurring amount the customer agreed to when
+	 *     they subscribed. It wins over anything recomputed from the form now:
+	 *     the form's price may have changed since, and charging the current
+	 *     price would silently bill a customer more than they consented to.
+	 *  2. The feed's own recurring amount, passed in by the caller. This is
+	 *     what covers a trial subscription set up before the marker existed:
+	 *     its first charge was legitimately zero, so nothing was stored then,
+	 *     and without this fallback such a subscription would never renew.
+	 *  3. The entry's `payment_amount` — the last settled charge. Only reached
+	 *     for entries that predate both markers; for a plain subscription it
+	 *     equals the recurring amount.
+	 *
+	 * Returns 0 when nothing usable is found, which the caller must treat as a
+	 * refusal to charge rather than as a free cycle.
+	 *
+	 * @param array $entry          Entry with chip_sub_* meta flattened in.
+	 * @param int   $feed_cents     Recurring amount derived from the feed, or 0.
+	 * @return int Amount in cents.
+	 */
+	public static function resolve_renewal_amount_cents( $entry, $feed_cents = 0 ) {
+		$stored = rgar( $entry, 'chip_sub_amount' );
+
+		if ( is_numeric( $stored ) && (int) $stored > 0 ) {
+			return (int) $stored;
+		}
+
+		if ( (int) $feed_cents > 0 ) {
+			return (int) $feed_cents;
+		}
+
+		return (int) round( (float) rgar( $entry, 'payment_amount' ) * 100 );
+	}
+
+	/**
+	 * The recurring amount configured on the feed, in cents.
+	 *
+	 * Core's `get_submission_data()` already resolves the amount for the
+	 * payment field, and for a subscription that field is `recurringAmount`.
+	 * Crucially it also excludes the trial and setup-fee products from the
+	 * total, so what comes back is the amount due on a NORMAL cycle — which is
+	 * exactly what a renewal has to charge. Reimplementing that exclusion here
+	 * would drift from core the moment it changes.
+	 *
+	 * Returns 0 when the feed is not a subscription or nothing can be
+	 * resolved, which the caller treats as "no answer", not as a zero charge.
+	 *
+	 * @param array $feed  Payment feed.
+	 * @param array $form  Form.
+	 * @param array $entry Entry.
+	 * @return int Amount in cents.
+	 */
+	private function resolve_feed_recurring_cents( $feed, $form, $entry ) {
+		if ( empty( $feed ) || empty( $form ) ) {
+			return 0;
+		}
+
+		if ( 'subscription' !== rgars( $feed, 'meta/transactionType' ) ) {
+			return 0;
+		}
+
+		$submission_data = $this->get_submission_data( $feed, $form, $entry );
+
+		if ( ! is_array( $submission_data ) ) {
+			return 0;
+		}
+
+		return (int) round( (float) rgar( $submission_data, 'payment_amount' ) * 100 );
+	}
+
+	/**
+	 * Purchase params for one renewal cycle.
+	 *
+	 * A renewal must NOT reuse the purchase the token was issued on. CHIP only
+	 * charges a purchase that can still be paid, and the original was settled
+	 * on the first cycle, so charging it is rejected outright:
+	 *
+	 *   400 purchase_charge_wrong_status
+	 *   "Only purchases that can be paid for can be charged."
+	 *
+	 * Every cycle therefore gets its own purchase, which the saved token then
+	 * authorises. `force_recurring` is deliberately absent: it asks CHIP to
+	 * ISSUE a token, and the token already exists.
+	 *
+	 * `success_callback` is set even though the token charge normally settles
+	 * synchronously: a `pending_charge` is only ever resolved by that callback,
+	 * and without it such a cycle would be collected at CHIP but never
+	 * reflected here.
+	 *
+	 * @param array  $credentials  Credentials from get_credentials_for_feed().
+	 * @param array  $entry        Entry with chip_sub_* meta flattened in.
+	 * @param int    $amount_cents Amount for this cycle, in cents.
+	 * @param string $product_name Line-item label.
+	 * @param string $email        Client email.
+	 * @param string $full_name    Client name.
+	 * @param string $timezone     Purchase timezone.
+	 * @return array
+	 */
+	public static function build_renewal_purchase_params( $credentials, $entry, $amount_cents, $product_name, $email, $full_name, $timezone ) {
+		return array(
+			'creator_agent'    => 'Gravity Forms: ' . ( defined( 'GF_CHIP_MODULE_VERSION' ) ? GF_CHIP_MODULE_VERSION : '' ),
+			'reference'        => (string) rgar( $entry, 'id' ),
+			'platform'         => 'gravityforms',
+			'send_receipt'     => false,
+			'brand_id'         => rgar( $credentials, 'brand_id' ),
+			'success_callback' => add_query_arg(
+				array(
+					'callback' => 'gravityformschip',
+					'entry_id' => rgar( $entry, 'id' ),
+				),
+				home_url( '/' )
+			),
+			'client'           => array(
+				'email'     => $email,
+				'full_name' => $full_name,
+			),
+			'purchase'         => array(
+				'timezone'   => $timezone,
+				'currency'   => rgar( $entry, 'currency' ),
+				'due'        => time() + 3600,
+				'due_strict' => false,
+				'products'   => array(
+					array(
+						'name'     => substr( $product_name, 0, 256 ),
+						'price'    => (int) $amount_cents,
+						'quantity' => 1,
+					),
+				),
+			),
+		);
+	}
+
+	/**
 	 * Persists the recurring token and subscription id for an entry.
 	 *
 	 * Called once a subscription purchase has been paid. Without a stored
@@ -799,12 +935,43 @@ class GF_Chip extends GFPaymentAddOn {
 	 * a false return as a hard failure worth surfacing rather than a warning —
 	 * a subscription with no token looks active but can never renew.
 	 *
-	 * @param int   $entry_id The Gravity Forms entry id the subscription belongs to.
-	 * @param int   $form_id  The form id, for the entry meta call.
+	 * @param int   $entry_id Entry ID.
+	 * @param int   $form_id  Form ID.
 	 * @param mixed $purchase Decoded CHIP purchase response.
 	 * @return bool True when a token was stored.
 	 */
 	public static function persist_subscription_token( $entry_id, $form_id, $purchase ) {
+		return self::store_token( $entry_id, $form_id, $purchase, true );
+	}
+
+	/**
+	 * Refreshes the token after a renewal charge.
+	 *
+	 * Same as persist_subscription_token(), except that it never rewrites the
+	 * subscription id. On a renewal the purchase response describes the NEW
+	 * cycle's purchase, and the token's owner must stay the purchase the token
+	 * was issued against — that is the id the card-update flow deletes the old
+	 * token with, so overwriting it would revoke the wrong subscription.
+	 *
+	 * @param int   $entry_id Entry ID.
+	 * @param int   $form_id  Form ID.
+	 * @param mixed $purchase Decoded CHIP charge response.
+	 * @return bool True when a token was stored.
+	 */
+	public static function refresh_subscription_token( $entry_id, $form_id, $purchase ) {
+		return self::store_token( $entry_id, $form_id, $purchase, false );
+	}
+
+	/**
+	 * Shared token store.
+	 *
+	 * @param int   $entry_id         Entry ID.
+	 * @param int   $form_id          Form ID.
+	 * @param mixed $purchase         Decoded CHIP purchase or charge response.
+	 * @param bool  $write_subscription_id Whether to (re)record the owner id.
+	 * @return bool True when a token was stored.
+	 */
+	private static function store_token( $entry_id, $form_id, $purchase, $write_subscription_id ) {
 		$token = self::extract_recurring_token( $purchase );
 
 		if ( null === $token || '' === $token ) {
@@ -813,13 +980,15 @@ class GF_Chip extends GFPaymentAddOn {
 
 		gform_update_meta( $entry_id, 'chip_recurring_token', $token, $form_id );
 
-		// The purchase id identifies the CHIP subscription and is needed to
-		// charge or delete the token later. It is not always the token itself
-		// (see extract_recurring_token), so store it separately.
-		$subscription_id = is_array( $purchase ) && ! empty( $purchase['id'] )
-			? (string) $purchase['id']
-			: $token;
-		gform_update_meta( $entry_id, 'chip_subscription_id', $subscription_id, $form_id );
+		if ( $write_subscription_id ) {
+			// The purchase id identifies the CHIP subscription and is needed to
+			// charge or delete the token later. It is not always the token
+			// itself (see extract_recurring_token), so store it separately.
+			$subscription_id = is_array( $purchase ) && ! empty( $purchase['id'] )
+				? (string) $purchase['id']
+				: $token;
+			gform_update_meta( $entry_id, 'chip_subscription_id', $subscription_id, $form_id );
+		}
 
 		return true;
 	}
@@ -1979,8 +2148,53 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$form_id = rgar( $form, 'id' );
 
-		// Advance first. Everything after this point may fail without the
-		// customer being charged twice on a later run.
+		// Everything needed to charge must be read and validated BEFORE the
+		// schedule is advanced. Advancing first is what makes an hourly cron
+		// safe (see the class docblock), but it also consumes a cycle: a later
+		// refusal would then burn an installment and quietly shorten the plan.
+		$token = rgar( $entry, 'chip_recurring_token' );
+
+		// The id the token was issued against. It is NOT the purchase to
+		// charge: CHIP only charges a purchase that can still be paid, and
+		// this one was settled on the first cycle. It stays the reference for
+		// the token itself, which is why it is still read here.
+		$token_owner = (string) gform_get_meta( $entry_id, 'chip_subscription_id' );
+		if ( '' === $token_owner ) {
+			$token_owner = (string) gform_get_meta( $entry_id, 'chip_payment_id' );
+		}
+
+		if ( empty( $token ) || empty( $token_owner ) ) {
+			return array(
+				'status' => 'skipped',
+				'note'   => '',
+			);
+		}
+
+		// chip_sub_amount is the agreed recurring amount and is the primary
+		// source. The feed's own recurring amount is the fallback for a
+		// subscription whose first cycle was a free trial, where nothing was
+		// stored. Resolving through both means a legacy or trial entry still
+		// renews at the amount the customer agreed to.
+		$amount_cents = self::resolve_renewal_amount_cents(
+			$entry,
+			$this->resolve_feed_recurring_cents( $feed, $form, $entry )
+		);
+
+		if ( $amount_cents <= 0 ) {
+			// Nothing to charge. This is a configuration problem, not a
+			// declined card, so it must not consume a cycle or reach the
+			// dunning ladder — that would email the customer about a failed
+			// payment that was never attempted, and could expire a
+			// subscription that is not actually in arrears.
+			$this->log_debug( __METHOD__ . "(): No renewable amount for entry #{$entry_id}; skipping without consuming a cycle." );
+			return array(
+				'status' => 'skipped',
+				'note'   => '',
+			);
+		}
+
+		// Advance now: everything below may fail without the customer being
+		// charged twice on a later run.
 		if ( null !== $plan['claim'] ) {
 			gform_update_meta( $entry_id, 'chip_sub_next_payment', $plan['claim'], $form_id );
 		}
@@ -1992,29 +2206,43 @@ class GF_Chip extends GFPaymentAddOn {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- MySQL advisory lock, same pattern the callback path already uses.
 		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT GET_LOCK(%s, 5)', $lock ) );
 
-		$token    = rgar( $entry, 'chip_recurring_token' );
-		$purchase = gform_get_meta( $entry_id, 'chip_payment_id' );
-
-		if ( empty( $token ) || empty( $purchase ) ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
-			$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
-			return array(
-				'status' => 'skipped',
-				'note'   => '',
-			);
-		}
-
 		$credentials = $this->get_credentials_for_feed( $feed );
 		$chip        = GF_CHIP_API::get_instance( $credentials['secret_key'], $credentials['brand_id'] );
 
-		$result = $chip->charge_recurring( $purchase, $token );
+		$email_location = rgars( $feed, 'meta/clientInformation_email' );
+		$name_location  = rgars( $feed, 'meta/clientInformation_full_name' );
+
+		// Each cycle gets its own purchase, then the saved token authorises
+		// the charge against it.
+		$purchase = $chip->create_payment(
+			self::build_renewal_purchase_params(
+				$credentials,
+				$entry,
+				$amount_cents,
+				(string) rgar( $form, 'title' ),
+				(string) rgar( $entry, $email_location ),
+				(string) rgar( $entry, $name_location ),
+				$this->get_timezone()
+			)
+		);
+
+		if ( ! is_array( $purchase ) || empty( $purchase['id'] ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
+			$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
+			// Nothing was created, so there is no purchase id to report: the
+			// failure is the create response itself.
+			return $this->handle_renewal_failure( $entry, $feed, '', $purchase, $plan );
+		}
+
+		$renewal_purchase_id = (string) $purchase['id'];
+
+		$result = $chip->charge_recurring( $renewal_purchase_id, $token );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releasing the advisory lock above.
 		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
 
 		if ( ! is_array( $result ) || empty( $result['id'] ) ) {
-			return $this->handle_renewal_failure( $entry, $feed, $purchase, $result, $plan );
+			return $this->handle_renewal_failure( $entry, $feed, $renewal_purchase_id, $result, $plan );
 		}
 
 		$status = isset( $result['status'] ) ? (string) $result['status'] : '';
@@ -2040,9 +2268,20 @@ class GF_Chip extends GFPaymentAddOn {
 			);
 		}
 
+		// The cycle is collected. Record it the same way the first payment
+		// was, so the entry's transaction id and the refund surface both
+		// point at the purchase that actually holds the money.
+		$this->record_renewal_payment( $entry, $renewal_purchase_id, $amount_cents );
+
+		// Refresh the recurring token if CHIP rotated it. Today it does not
+		// (the same token comes back), but a rotation that went unstored
+		// would break every later cycle silently.
+		self::refresh_subscription_token( $entry_id, $form_id, $result );
+
 		// Success: clear the dunning counters and, on the final instalment,
 		// expire rather than schedule another cycle.
 		gform_update_meta( $entry_id, 'chip_sub_retry_count', 0, $form_id );
+		gform_update_meta( $entry_id, 'chip_sub_last_payment', gmdate( 'Y-m-d H:i:s' ), $form_id );
 
 		if ( null === $plan['claim'] ) {
 			gform_update_meta( $entry_id, 'chip_sub_status', 'expired', $form_id );
@@ -2077,7 +2316,7 @@ class GF_Chip extends GFPaymentAddOn {
 			array(
 				'type'           => GF_Chip_Renewal_Notifications::EVENT_RENEWED,
 				'amount'         => $amount,
-				'transaction_id' => rgar( $entry, 'chip_payment_id' ),
+				'transaction_id' => $renewal_purchase_id,
 				'payment_status' => 'Paid',
 			)
 		);
@@ -2085,6 +2324,48 @@ class GF_Chip extends GFPaymentAddOn {
 		return array(
 			'status' => 'charged',
 			'note'   => '',
+		);
+	}
+
+	/**
+	 * Records a collected renewal cycle against the entry.
+	 *
+	 * The entry must point at the purchase that actually holds the money for
+	 * the CURRENT cycle: `transaction_id` drives the refund button, and the
+	 * first cycle's purchase cannot be charged or refunded a second time.
+	 *
+	 * `chip_payment_id` is deliberately left alone. It is the id the recurring
+	 * token was issued against — the reference the card-update flow deletes
+	 * the old token with (`delete_recurring_token()`), so replacing it with a
+	 * later cycle's purchase id would revoke the wrong thing.
+	 *
+	 * @param array  $entry               Entry.
+	 * @param string $renewal_purchase_id Purchase created for this cycle.
+	 * @param int    $amount_cents        Amount collected, in cents.
+	 * @return void
+	 */
+	private function record_renewal_payment( $entry, $renewal_purchase_id, $amount_cents ) {
+		$entry_id = rgar( $entry, 'id' );
+		$form_id  = rgar( $entry, 'form_id' );
+		$amount   = $amount_cents / 100;
+
+		$live = GFAPI::get_entry( $entry_id );
+
+		if ( is_array( $live ) ) {
+			$live['transaction_id'] = $renewal_purchase_id;
+			$live['payment_amount'] = $amount;
+			$live['payment_date']   = gmdate( 'Y-m-d H:i:s' );
+
+			GFAPI::update_entry( $live );
+		}
+
+		$this->insert_transaction(
+			$entry_id,
+			'payment',
+			$renewal_purchase_id,
+			$amount,
+			true,
+			$renewal_purchase_id
 		);
 	}
 
@@ -2148,7 +2429,7 @@ class GF_Chip extends GFPaymentAddOn {
 			array(
 				'type'           => GF_Chip_Renewal_Notifications::EVENT_FAILED,
 				'amount'         => rgar( $plan, 'amount' ),
-				'transaction_id' => rgar( $entry, 'chip_payment_id' ),
+				'transaction_id' => $purchase,
 				'payment_status' => 'Failed',
 			)
 		);
@@ -2168,7 +2449,7 @@ class GF_Chip extends GFPaymentAddOn {
 				array(
 					'type'           => GF_Chip_Renewal_Notifications::EVENT_EXPIRED,
 					'amount'         => rgar( $plan, 'amount' ),
-					'transaction_id' => rgar( $entry, 'chip_payment_id' ),
+					'transaction_id' => $purchase,
 					'payment_status' => 'Expired',
 				)
 			);
@@ -2217,7 +2498,11 @@ class GF_Chip extends GFPaymentAddOn {
 				continue;
 			}
 
-			foreach ( array( 'chip_recurring_token', 'chip_sub_next_payment', 'chip_sub_status', 'chip_sub_retry_count' ) as $key ) {
+			// chip_sub_amount carries the agreed RECURRING amount and is what
+			// the renewal engine charges; chip_subscription_id identifies the
+			// purchase the token was issued against. Without both flattened in
+			// the cron path sees neither and cannot charge correctly.
+			foreach ( array( 'chip_recurring_token', 'chip_sub_next_payment', 'chip_sub_status', 'chip_sub_retry_count', 'chip_sub_amount', 'chip_subscription_id', 'chip_payment_id' ) as $key ) {
 				$entry[ $key ] = gform_get_meta( (int) $entry_id, $key );
 			}
 
@@ -2319,13 +2604,23 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->start_subscription( $entry, $subscription );
 
-		// The amount the customer agreed to pay, in the smallest unit. This
-		// is what a settling card update collects, so without it the
-		// resolution falls back to zero and the debt is written off.
-		$amount = (float) rgar( $action, 'amount' );
+		// The amount the customer agreed to pay EVERY cycle. This is the
+		// feed's recurring amount, not the first charge: a trial subscription
+		// legitimately collects zero up front, and storing that would make
+		// the renewal engine read 0 and skip the subscription forever.
+		// Core's get_submission_data() already excludes the trial and setup
+		// fee for a subscription feed, so its total is the recurring amount.
+		$form_id   = rgar( $entry, 'form_id' );
+		$recurring = $this->resolve_feed_recurring_cents( $feed, GFAPI::get_form( $form_id ), $entry );
 
-		if ( $amount > 0 ) {
-			gform_update_meta( $entry_id, 'chip_sub_amount', (int) round( $amount * 100 ), rgar( $entry, 'form_id' ) );
+		if ( $recurring <= 0 ) {
+			// Fall back to what was actually collected, which is correct for
+			// every subscription whose first cycle is a normal one.
+			$recurring = (int) round( (float) rgar( $action, 'amount' ) * 100 );
+		}
+
+		if ( $recurring > 0 ) {
+			gform_update_meta( $entry_id, 'chip_sub_amount', $recurring, $form_id );
 		}
 	}
 
