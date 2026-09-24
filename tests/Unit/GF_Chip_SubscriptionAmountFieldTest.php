@@ -177,14 +177,14 @@ class GF_Chip_SubscriptionAmountFieldTest extends TestCase {
 	 *     @type string|bool $redirect The redirect_url() return value.
 	 * }
 	 */
-	private function capture_checkout( $feed ) {
+	private function capture_checkout( $feed, $extra_submission = array() ) {
 		$captured = array();
 		$this->mock_wordpress( $captured );
 
 		$submission_data = array(
 			'payment_amount' => 10.0,
 			'line_items'     => array(),
-		);
+		) + $extra_submission;
 
 		$form = array(
 			'id'     => 2,
@@ -336,5 +336,72 @@ class GF_Chip_SubscriptionAmountFieldTest extends TestCase {
 		$this->assertSame( 'Widget', rgar( $product, 'name' ) );
 		$this->assertSame( 2500, (int) rgar( $product, 'price' ) );
 		$this->assertSame( '2', (string) rgar( $product, 'quantity' ) );
+	}
+
+	// ---------------------------------------------------------------------
+	// Wiring: the first-charge rules must reach the actual payload.
+	//
+	// The resolvers being correct is worthless if redirect_url() does not
+	// apply them. These assert on the JSON body sent to CHIP.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * A free trial asks CHIP to authorise the card without capturing it.
+	 *
+	 * Without skip_capture the customer is charged a full cycle they were
+	 * promised free.
+	 */
+	public function test_free_trial_payload_skips_capture_and_charges_nothing(): void {
+		$feed = $this->subscription_feed();
+		$feed['meta']['trial_enabled'] = '1';
+		$feed['meta']['trial_product'] = 'enter_amount';
+		$feed['meta']['trial_amount']  = '0';
+
+		$result  = $this->capture_checkout( $feed, array( 'trial' => 0 ) );
+		$product = $result['product'];
+
+		$this->assertTrue( rgar( $result['body'], 'skip_capture' ), 'A free trial must not be captured' );
+		$this->assertSame( 0, (int) rgar( $product, 'price' ) );
+		$this->assertSame( 'Free trial', rgar( $product, 'name' ) );
+	}
+
+	/**
+	 * A free trial WITH a setup fee must be captured.
+	 *
+	 * The setup fee is owed now. Setting skip_capture here would reserve the
+	 * funds on the customer's card and leave the merchant unpaid — the exact
+	 * mistake this test exists to prevent.
+	 */
+	public function test_free_trial_with_setup_fee_payload_captures_the_fee(): void {
+		$feed = $this->subscription_feed();
+		$feed['meta']['trial_enabled'] = '1';
+		$feed['meta']['trial_product'] = 'enter_amount';
+		$feed['meta']['trial_amount']  = '0';
+
+		$result  = $this->capture_checkout( $feed, array( 'trial' => 0, 'setup_fee' => 5.0 ) );
+		$product = $result['product'];
+
+		$this->assertArrayNotHasKey( 'skip_capture', $result['body'], 'A setup fee is payable now, so capture must proceed' );
+		$this->assertSame( 500, (int) rgar( $product, 'price' ) );
+		$this->assertSame( 'Setup fee', rgar( $product, 'name' ) );
+	}
+
+	/**
+	 * An ordinary subscription captures the full recurring amount.
+	 */
+	public function test_plain_subscription_payload_does_not_skip_capture(): void {
+		$result = $this->capture_checkout( $this->subscription_feed() );
+
+		$this->assertArrayNotHasKey( 'skip_capture', $result['body'] );
+		$this->assertSame( 1000, (int) rgar( $result['product'], 'price' ) );
+	}
+
+	/**
+	 * A one-time feed never carries skip_capture.
+	 */
+	public function test_one_time_payload_never_skips_capture(): void {
+		$result = $this->capture_checkout( $this->product_feed() );
+
+		$this->assertArrayNotHasKey( 'skip_capture', $result['body'] );
 	}
 }
