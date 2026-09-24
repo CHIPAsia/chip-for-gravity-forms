@@ -1,8 +1,8 @@
 === CHIP for Gravity Forms ===
 Contributors: chipasia, wanzulnet
-Tags: chip, gravity forms, payment, fpx, payment gateway, subscription, recurring
+Tags: chip, gravity forms, payment, fpx, payment gateway
 Requires at least: 6.3
-Tested up to: 7.0
+Tested up to: 7.1
 Stable tag: 1.3.0
 Requires PHP: 7.4
 License: GPLv3
