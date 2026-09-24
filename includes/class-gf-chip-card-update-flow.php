@@ -51,6 +51,43 @@ class GF_Chip_Card_Update_Flow {
 	// -----------------------------------------------------------------
 
 	/**
+	 * Joins the name parts of a composite name field, in form order.
+	 *
+	 * Kept pure and feed-driven: the field is the one the feed names, so a
+	 * form that numbers its fields differently still produces the customer's
+	 * actual name. A hardcoded field id would silently yield an empty name.
+	 *
+	 * @param array  $entry Entry values, keyed by field id.
+	 * @param array  $order Input ids in form order, e.g. array( '1.3', '1.6' ).
+	 * @param string $location Field id the feed names.
+	 * @return string
+	 */
+	public static function join_name_parts( $entry, $order, $location ) {
+		$parts = array();
+
+		foreach ( (array) $order as $key ) {
+			if ( 0 !== strpos( (string) $key, $location . '.' ) ) {
+				continue;
+			}
+
+			$value = is_array( $entry ) ? rgar( $entry, $key ) : '';
+
+			if ( is_string( $value ) && '' !== trim( $value ) ) {
+				$parts[] = trim( $value );
+			}
+		}
+
+		if ( ! empty( $parts ) ) {
+			return implode( ' ', $parts );
+		}
+
+		// A single-line field named by the feed.
+		$single = is_array( $entry ) ? rgar( $entry, $location ) : '';
+
+		return is_string( $single ) ? trim( $single ) : '';
+	}
+
+	/**
 	 * Product label for the purchase.
 	 *
 	 * @param int $amount_cents Resolved amount.
@@ -88,6 +125,9 @@ class GF_Chip_Card_Update_Flow {
 	 *     @type int    $entry_id     Entry id.
 	 *     @type string $return_url   Where CHIP sends the customer back.
 	 *     @type string $reference    Optional reference override.
+	 *     @type string $brand_id     Brand the purchase belongs to.
+	 *     @type string $email        Customer email, read from the entry.
+	 *     @type string $full_name    Customer name, read from the entry.
 	 * }
 	 * @return array
 	 */
@@ -97,8 +137,21 @@ class GF_Chip_Card_Update_Flow {
 		$entry_id     = (int) rgar( $args, 'entry_id' );
 		$return_url   = (string) rgar( $args, 'return_url' );
 		$reference    = rgar( $args, 'reference' );
+		$brand_id     = (string) rgar( $args, 'brand_id' );
+		$email        = (string) rgar( $args, 'email' );
+		$full_name    = (string) rgar( $args, 'full_name' );
 
 		return array(
+			// CHIP rejects the purchase outright without this — the field is
+			// required on the create call, not inferred from the credentials
+			// the client was constructed with.
+			'brand_id'                 => $brand_id,
+			// Also required on the create call, else CHIP answers
+			// purchase_client_or_id_required.
+			'client'                   => array(
+				'email'     => $email,
+				'full_name' => substr( $full_name, 0, 30 ),
+			),
 			'force_recurring'          => true,
 			'payment_method_whitelist' => GF_Chip::get_recurring_payment_method_whitelist(),
 			// CHIP requires this exact value for Gravity Forms purchases.
@@ -147,6 +200,28 @@ class GF_Chip_Card_Update_Flow {
 			'retry_count' => 0,
 			'settled'     => (bool) $was_settling && null !== $token,
 		);
+	}
+
+	/**
+	 * Whether a return trip should settle the recorded purchase.
+	 *
+	 * CHIP does not append the purchase id to success_redirect, so the return
+	 * carries nothing to settle from. The purchase the link created is read
+	 * from the entry instead — and the marker stops a page reload from
+	 * settling (and re-issuing a link) a second time.
+	 *
+	 * Kept pure so the decision is pinned without a network round trip.
+	 *
+	 * @param mixed $recorded        Purchase id recorded before the handoff.
+	 * @param mixed $already_settled Marker written by an earlier return.
+	 * @return bool
+	 */
+	public static function should_settle_return( $recorded, $already_settled ) {
+		if ( '' === trim( (string) $recorded ) ) {
+			return false;
+		}
+
+		return '1' !== (string) $already_settled;
 	}
 
 	/**
