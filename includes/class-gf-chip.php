@@ -648,6 +648,118 @@ class GF_Chip extends GFPaymentAddOn {
 	}
 
 	/**
+	 * The amount to collect on a subscription's first charge, in cents.
+	 *
+	 * Gravity Forms reports three numbers that are NOT interchangeable, and
+	 * core states plainly which is which (class-gf-payment-addon.php,
+	 * get_order_data):
+	 *
+	 *  - `payment_amount` — the form total. It is the recurring value of a
+	 *    subscription, but a trial does not replace it: with
+	 *    trial_product = 'enter_amount', core keeps payment_amount at the
+	 *    full price and only reports the trial separately.
+	 *  - `trial` — the amount to collect first when a trial is configured.
+	 *    Zero means the first cycle is free. This is the field to prefer.
+	 *  - `setup_fee` — collected on top of whichever of the two applies.
+	 *
+	 * Reading payment_amount alone therefore charges full price during a
+	 * trial and never collects a setup fee. A setup fee is money owed now:
+	 * it must be collected immediately, including when a trial means the
+	 * recurring amount is not.
+	 *
+	 * Returns 0 for a genuinely free trial — the caller must then skip
+	 * capture rather than authorise, so no funds are held on the customer's
+	 * card for a payment that is not being taken.
+	 *
+	 * `$has_trial` must come from the feed (`meta/trial_enabled`), NOT from
+	 * the submission data. Core's get_order_data() always returns a `trial`
+	 * key, so its presence says nothing; and when the trial is configured as
+	 * `enter_amount` with a value of '0' core's own
+	 * `rgar(...) ? ... : 0` treats it as falsy and returns an int 0 —
+	 * identical to having no trial at all. The feed is the only reliable
+	 * signal, and without it a free trial would be charged in full.
+	 *
+	 * @param array $submission_data Submission data from the payment add-on.
+	 * @param bool  $has_trial       Whether the feed configures a trial.
+	 * @return int Amount in the smallest currency unit.
+	 */
+	public static function resolve_first_charge_cents( $submission_data, $has_trial = false ) {
+		$payment_amount = (float) rgar( $submission_data, 'payment_amount', 0 );
+
+		// A one-time feed has neither a trial nor a setup fee, so its first
+		// charge is the form total. Checked explicitly rather than inferring
+		// from zero values, so the intent survives.
+		if ( ! rgar( $submission_data, 'is_subscription' ) ) {
+			return (int) round( $payment_amount * 100 );
+		}
+
+		// A configured trial replaces the first charge. It may legitimately
+		// be zero, which is a free trial rather than "no trial".
+		$trial_amount = (float) rgar( $submission_data, 'trial', 0 );
+		$first_cycle  = $has_trial ? $trial_amount : $payment_amount;
+		$setup_fee    = (float) rgar( $submission_data, 'setup_fee', 0 );
+
+		return (int) round( ( $first_cycle + $setup_fee ) * 100 );
+	}
+
+	/**
+	 * Whether a subscription's first charge must be authorised without
+	 * capture.
+	 *
+	 * Only a genuinely free first charge skips capture. `skip_capture` means
+	 * "authorise now, do not take the money", so setting it while an amount
+	 * is owed would reserve funds on the customer's card and leave the
+	 * merchant unpaid.
+	 *
+	 * A trial with a setup fee is the case to be careful about: the setup
+	 * fee is payable immediately even though the trial amount is zero, so
+	 * the decision keys on the total first charge and never on the mere
+	 * presence of a trial.
+	 *
+	 * @param int $amount_cents Resolved first charge.
+	 * @return bool
+	 */
+	public static function should_skip_first_capture( $amount_cents ) {
+		return (int) $amount_cents <= 0;
+	}
+
+	/**
+	 * The product name to send for a subscription's first charge.
+	 *
+	 * The name matters when the charge is not the recurring one. A free trial
+	 * still needs a named product, and a setup fee is what is actually being
+	 * collected, so labelling it with the subscription's name would describe
+	 * a payment the customer is not making.
+	 *
+	 * Core removes the trial and setup-fee fields from the line items once
+	 * they are flagged as such, so their own names are not available here —
+	 * hence the fixed labels.
+	 *
+	 * @param array  $submission_data    Submission data from the payment add-on.
+	 * @param string $recurring_label    The subscription's own label.
+	 * @param int    $amount_cents       Resolved first charge.
+	 * @param bool   $has_trial          Whether the feed configures a trial.
+	 * @return string
+	 */
+	public static function resolve_first_charge_label( $submission_data, $recurring_label, $amount_cents, $has_trial = false ) {
+		$setup_fee = (float) rgar( $submission_data, 'setup_fee', 0 );
+		$trial     = (float) rgar( $submission_data, 'trial', 0 );
+
+		if ( $setup_fee > 0 && $has_trial && $trial <= 0 ) {
+			// A free trial with a setup fee: the fee is the whole charge.
+			return __( 'Setup fee', 'chip-for-gravity-forms' );
+		}
+
+		if ( (int) $amount_cents <= 0 ) {
+			// A free trial with nothing to collect: the product still needs
+			// a name, and this is the honest description of the purchase.
+			return __( 'Free trial', 'chip-for-gravity-forms' );
+		}
+
+		return $recurring_label;
+	}
+
+	/**
 	 * Extracts the recurring token from a CHIP purchase response.
 	 *
 	 * CHIP returns the token in one of two shapes:
@@ -1219,6 +1331,34 @@ class GF_Chip extends GFPaymentAddOn {
 		$reference = rgar( $entry, $reference_location );
 		$full_name = rgar( $entry, $name_location, '' );
 
+		// A subscription's first charge is not simply the amount field: a
+		// configured trial replaces the first cycle, and a setup fee is
+		// collected on top of whichever applies. Gravity Forms reports all
+		// three separately and never folds them together, so resolving it
+		// here is the only place the correct first charge can be produced.
+		// A one-time feed is left exactly as it was.
+		$is_subscription = 'subscription' === rgars( $feed, 'meta/transactionType' );
+		if ( $is_subscription ) {
+			// The feed is the only reliable signal that a trial exists: core
+			// reports a `trial` key unconditionally, and an enter_amount
+			// trial of '0' comes back as an int 0, indistinguishable from
+			// no trial at all.
+			$has_trial = ! empty( rgars( $feed, 'meta/trial_enabled' ) );
+
+			$first_charge_cents = self::resolve_first_charge_cents(
+				array(
+					'is_subscription' => true,
+					'payment_amount'  => $amount / 100,
+					'trial'           => rgar( $submission_data, 'trial' ),
+					'setup_fee'       => rgar( $submission_data, 'setup_fee' ),
+				),
+				$has_trial
+			);
+
+			$amount       = $first_charge_cents;
+			$product_name = self::resolve_first_charge_label( $submission_data, $product_name, $first_charge_cents, $has_trial );
+		}
+
 		if ( ! empty( $full_name_location_array ) ) {
 			if ( array_key_exists( $name_location, $full_name_location_array ) ) {
 				foreach ( $full_name_location_array[ $name_location ] as $full_name_location ) {
@@ -1275,6 +1415,15 @@ class GF_Chip extends GFPaymentAddOn {
 
 		// Merge client array with client meta data array.
 		$params['client'] += $client_meta_data;
+
+		// A genuinely free first charge (a trial with nothing payable up
+		// front) must only authorise the card so the token can be stored.
+		// Every other subscription collects in full: setting skip_capture
+		// while an amount is owed would hold funds on the customer's card
+		// and leave the merchant unpaid. One-time feeds never set it.
+		if ( $is_subscription && self::should_skip_first_capture( $amount ) ) {
+			$params['skip_capture'] = true;
+		}
 
 		// A subscription feed must request a recurring token, and only card
 		// methods can produce one. Merged before the filter below so an
