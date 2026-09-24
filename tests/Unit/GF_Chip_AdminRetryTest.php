@@ -125,6 +125,9 @@ class GF_Chip_AdminRetryTest extends TestCase {
 		gform_update_meta( $entry_id, 'chip_sub_remaining', '3' );
 		gform_update_meta( $entry_id, 'chip_sub_retry_count', '0' );
 		gform_update_meta( $entry_id, 'chip_payment_id', 'pay_x' );
+		// A renewal is skipped without an agreed recurring amount, so the
+		// fixture carries one the way a real subscription entry does.
+		gform_update_meta( $entry_id, 'chip_sub_amount', '5000' );
 
 		$entry = array(
 			'id'                    => $entry_id,
@@ -134,6 +137,7 @@ class GF_Chip_AdminRetryTest extends TestCase {
 			'chip_sub_status'       => 'on-hold',
 			'chip_recurring_token'  => 'tok_live',
 			'chip_sub_next_payment' => $due,
+			'chip_sub_amount'       => '5000',
 		);
 
 		GFAPI::set_form( array( 'id' => 1, 'title' => 'F' ) );
@@ -166,6 +170,11 @@ class GF_Chip_AdminRetryTest extends TestCase {
 			}
 		);
 		WP_Mock::userFunction( 'get_option' )->andReturn( array() );
+		// The renewal purchase carries a timezone and a success callback, so
+		// the real get_timezone() and param builder are reached on this path.
+		WP_Mock::userFunction( 'wp_timezone_string' )->andReturn( 'Asia/Kuala_Lumpur' );
+		WP_Mock::userFunction( 'home_url' )->andReturn( 'https://example.com/' );
+		WP_Mock::userFunction( 'add_query_arg' )->andReturn( 'https://example.com/?callback=gravityformschip' );
 
 		$addon = $this->getMockBuilder( GF_Chip::class )
 			->disableOriginalConstructor()

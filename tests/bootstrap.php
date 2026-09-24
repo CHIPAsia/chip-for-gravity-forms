@@ -129,55 +129,115 @@ if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
 	 * exercised. Staging a feed makes those paths reachable.
 	 */
 	/**
-	 * Minimal $wpdb stand-in for advisory-lock calls.
+	 * Minimal $wpdb stand-in.
 	 *
-	 * The renewal path takes a MySQL GET_LOCK before charging. Tests do not need
-	 * real locking, only for the call to not fatal.
+	 * The renewal path takes a MySQL GET_LOCK before charging, and the cron
+	 * path reads its due list with get_col(). Tests do not need real locking
+	 * or a real database: get_col() returns whatever a test has staged, so the
+	 * cron's own wiring can be driven end to end.
 	 */
-	if ( ! isset( $GLOBALS['wpdb'] ) ) {
-		$GLOBALS['wpdb'] = new class() {
-			/**
-			 * Table prefix.
-			 *
-			 * @var string
-			 */
-			public $prefix = 'wp_';
-
-			/**
-			 * Runs a query, returning an empty result set.
-			 *
-			 * @param string $query The SQL.
-			 * @return array
-			 */
-			public function get_results( $query = '' ) {
-				return array();
-			}
-
-			/**
-			 * Prepares a query.
-			 *
-			 * @param string $query The SQL.
-			 * @param mixed  ...$args Arguments.
-			 * @return string
-			 */
-			public function prepare( $query, ...$args ) {
-				return $query;
-			}
-
-			/**
-			 * Runs a query.
-			 *
-			 * @param string $query The SQL.
-			 * @return int
-			 */
-			public function query( $query = '' ) {
-				return 0;
-			}
-		};
-	}
-
+	if ( ! class_exists( 'GF_Chip_Test_WPDB' ) ) {
 	/**
-	 * Minimal GFAPI stand-in for tests that drive a real payment path.
+	 * Minimal $wpdb stand-in.
+	 *
+	 * get_col() returns the staged due list, so the cron's own wiring — the
+	 * query, the meta flattening, and the charge decision — can be driven
+	 * end to end without a database.
+	 */
+	class GF_Chip_Test_WPDB {
+
+		/**
+		 * Table prefix.
+		 *
+		 * @var string
+		 */
+		public $prefix = 'wp_';
+
+		/**
+		 * Entry ids the next get_col() call returns.
+		 *
+		 * @var array
+		 */
+		public static $due_ids = array();
+
+		/**
+		 * Every prepared query, in order.
+		 *
+		 * @var array
+		 */
+		public static $queries = array();
+
+		/**
+		 * Stage the ids a due query returns.
+		 *
+		 * @param array $ids Entry ids.
+		 * @return void
+		 */
+		public static function set_due_ids( array $ids ) {
+			self::$due_ids = $ids;
+		}
+
+		/**
+		 * Clear staged state.
+		 *
+		 * @return void
+		 */
+		public static function reset() {
+			self::$due_ids = array();
+			self::$queries = array();
+		}
+
+		/**
+		 * Runs a query, returning an empty result set.
+		 *
+		 * @param string $query The SQL.
+		 * @return array
+		 */
+		public function get_results( $query = '' ) {
+			return array();
+		}
+
+		/**
+		 * Returns a column of results. Only the due-list query is served.
+		 *
+		 * @param string $query The SQL.
+		 * @return array
+		 */
+		public function get_col( $query = '' ) {
+			return self::$due_ids;
+		}
+
+		/**
+		 * Prepares a query.
+		 *
+		 * @param string $query The SQL.
+		 * @param mixed  ...$args Arguments.
+		 * @return string
+		 */
+		public function prepare( $query, ...$args ) {
+			self::$queries[] = $query;
+
+			return $query;
+		}
+
+		/**
+		 * Runs a query.
+		 *
+		 * @param string $query The SQL.
+		 * @return int
+		 */
+		public function query( $query = '' ) {
+			return 0;
+		}
+	}
+}
+
+if ( ! isset( $GLOBALS['wpdb'] ) ) {
+	$GLOBALS['wpdb'] = new GF_Chip_Test_WPDB();
+}
+
+/**
+ * Minimal GFAPI stand-in for tests that drive a real payment path.
 	 *
 	 * Only the calls the renewal path makes are implemented. Form and entry
 	 * lookups return whatever a test has staged, so the charge path can run
@@ -293,6 +353,48 @@ if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
 			self::$entries[ $id ] = $entry;
 
 			return true;
+		}
+	}
+
+	class GF_Chip_Test_Submission {
+
+		/**
+		 * The staged submission data.
+		 *
+		 * @var array
+		 */
+		private static $submission = array();
+
+		/**
+		 * Stage submission data for the next call.
+		 *
+		 * Core's get_submission_data() reports the resolved payment amount
+		 * under `payment_amount` and the trial/setup fee separately. A test
+		 * expresses the recurring amount as payment_amount here.
+		 *
+		 * @param array $submission The submission data.
+		 * @return void
+		 */
+		public static function set( array $submission ) {
+			self::$submission = $submission;
+		}
+
+		/**
+		 * The staged submission data.
+		 *
+		 * @return array
+		 */
+		public static function get() {
+			return self::$submission;
+		}
+
+		/**
+		 * Clear the staged submission data.
+		 *
+		 * @return void
+		 */
+		public static function reset() {
+			self::$submission = array();
 		}
 	}
 
@@ -581,6 +683,23 @@ if ( ! function_exists( 'wp_remote_retrieve_response_code' ) ) {
 if ( ! class_exists( 'GFForms' ) ) {
 	class GFForms {
 		public static function include_payment_addon_framework() {
+		}
+	}
+}
+
+// Core's money formatter, reached on every successful-renewal note.
+// Kept faithful to core: an amount and a currency, rendered for display.
+if ( ! class_exists( 'GFCommon' ) ) {
+	class GFCommon {
+		/**
+		 * Formats an amount for display.
+		 *
+		 * @param float  $amount   Amount.
+		 * @param string $currency Currency code.
+		 * @return string
+		 */
+		public static function to_money( $amount, $currency = '' ) {
+			return number_format( (float) $amount, 2 ) . ' ' . $currency;
 		}
 	}
 }
@@ -878,6 +997,25 @@ if ( ! class_exists( 'GFPaymentAddOn' ) ) {
 			$key = rgars( $feed, 'meta/transactionType' ) === 'subscription' ? 'recurringAmount' : 'paymentAmount';
 
 			return rgars( $feed, 'meta/' . $key, 'form_total' );
+		}
+
+		/**
+		 * Mirrors core's get_submission_data() for the payment fields the
+		 * renewal path reads.
+		 *
+		 * Core builds this from the form's product fields, resolving the
+		 * amount for the feed's payment field (recurringAmount for a
+		 * subscription) and excluding the trial and setup-fee products from
+		 * the total. The stub reads the staged form's line items so a test can
+		 * express "the recurring amount is X" without reimplementing core.
+		 *
+		 * @param array $feed  The current feed.
+		 * @param array $form  Form.
+		 * @param array $entry Entry.
+		 * @return array
+		 */
+		public function get_submission_data( $feed, $form, $entry ) {
+			return GF_Chip_Test_Submission::get();
 		}
 	}
 }
