@@ -739,6 +739,13 @@ class GF_Chip extends GFPaymentAddOn {
 	 * transaction_type === '1', which hid the refund button on every
 	 * subscription entry.
 	 *
+	 * Accepts 'Active' as well as 'Paid'. Gravity Forms records a
+	 * subscription's payment_status as 'Active' (see core's
+	 * start_subscription(), which sets it), not 'Paid' — so requiring 'Paid'
+	 * hid the refund button on exactly the entries this predicate was
+	 * widened to support. A subscription payment is a payment: it is
+	 * refundable, and a merchant needs to be able to give the money back.
+	 *
 	 * @param mixed $entry Entry object.
 	 * @return bool
 	 */
@@ -751,7 +758,9 @@ class GF_Chip extends GFPaymentAddOn {
 			return false;
 		}
 
-		return 'Paid' === rgar( $entry, 'payment_status' );
+		$status = (string) rgar( $entry, 'payment_status' );
+
+		return in_array( $status, array( 'Paid', 'Active' ), true );
 	}
 
 	/**
