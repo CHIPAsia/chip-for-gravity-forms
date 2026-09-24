@@ -63,6 +63,27 @@ if ( ! function_exists( 'rgars' ) ) {
 	}
 }
 
+if ( ! function_exists( 'rgempty' ) ) {
+	/**
+	 * Mirrors Gravity Forms' rgempty(): true when the key is absent or the
+	 * value is empty-ish. Used by the stub of core's start_subscription()
+	 * to decide whether a subscription_start_date was supplied.
+	 *
+	 * @param string $name  Key name.
+	 * @param array  $array Array to read, $_POST by default.
+	 * @return bool
+	 */
+	function rgempty( $name, $array = null ) {
+		if ( ! isset( $array ) ) {
+			$array = $_POST;
+		}
+
+		$val = rgar( $array, $name );
+
+		return empty( $val );
+	}
+}
+
 if ( ! function_exists( 'rgget' ) ) {
 	function rgget( $name, $array = null ) {
 		if ( ! isset( $array ) ) {
@@ -246,6 +267,30 @@ if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
 			}
 
 			self::$entries[ $id ][ $property ] = $value;
+
+			return true;
+		}
+
+		/**
+		 * Merges an entry array into the staged store.
+		 *
+		 * Gravity Forms core calls this from complete_payment() and
+		 * start_subscription(), so the subscription activation path needs it
+		 * to exist. The real implementation writes to the entry table; here
+		 * the staged copy is replaced, which is what a subsequent read-back
+		 * in the same request would observe.
+		 *
+		 * @param array $entry Entry including its id.
+		 * @return bool
+		 */
+		public static function update_entry( $entry ) {
+			$id = is_array( $entry ) ? (int) rgar( $entry, 'id' ) : 0;
+
+			if ( 0 === $id ) {
+				return false;
+			}
+
+			self::$entries[ $id ] = $entry;
 
 			return true;
 		}
@@ -636,6 +681,123 @@ if ( ! class_exists( 'GFPaymentAddOn' ) ) {
 		}
 
 		public function log_debug( $message ) {
+		}
+
+		/**
+		 * Formats an action's amount for its note. Minimal but faithful:
+		 * core only needs `amount_formatted` to exist before build_note().
+		 *
+		 * @param array  $action   The action.
+		 * @param string $currency Currency code.
+		 * @return array
+		 */
+		public function maybe_add_action_amount_formatted( $action, $currency = '' ) {
+			if ( empty( $action['amount_formatted'] ) && isset( $action['amount'] ) ) {
+				$action['amount_formatted'] = number_format( (float) $action['amount'], 2, '.', '' ) . ' ' . $currency;
+			}
+
+			return $action;
+		}
+
+		/**
+		 * Whether the entry already carries an active subscription.
+		 *
+		 * Faithful copy of core's own check (class-gf-payment-addon.php):
+		 * transaction_type 2 AND a non-empty transaction_id. It is what
+		 * gates start_subscription()'s field writes.
+		 *
+		 * @param array $entry Entry.
+		 * @return bool
+		 */
+		public function has_subscription( $entry ) {
+			return '2' === (string) rgar( $entry, 'transaction_type' ) && ! rgempty( 'transaction_id', $entry );
+		}
+
+		/**
+		 * Trigger payment delayed feeds. No-op in tests.
+		 *
+		 * @param string $transaction_id Transaction id.
+		 * @param array  $feed           Payment feed.
+		 * @param array  $entry          Entry.
+		 * @param array  $form           Form.
+		 * @return void
+		 */
+		public function trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form ) {
+		}
+
+		/**
+		 * Marks a payment complete.
+		 *
+		 * Faithful to core (class-gf-payment-addon.php complete_payment()),
+		 * INCLUDING the detail that matters to this feature: core writes
+		 * `transaction_type = '1'` unconditionally, so a subscription
+		 * purchase that arrives through this path loses its type unless
+		 * something puts it back. A stub that was "nicer" than core here
+		 * would make the activation tests pass without proving anything.
+		 *
+		 * @param array $entry  Entry (by reference).
+		 * @param array $action Callback action.
+		 * @return bool
+		 */
+		public function complete_payment( &$entry, $action ) {
+			if ( ! rgar( $action, 'payment_status' ) ) {
+				$action['payment_status'] = 'Paid';
+			}
+
+			if ( ! rgar( $action, 'transaction_type' ) ) {
+				$action['transaction_type'] = 'payment';
+			}
+
+			if ( ! rgar( $action, 'payment_date' ) ) {
+				$action['payment_date'] = gmdate( 'y-m-d H:i:s' );
+			}
+
+			$entry['is_fulfilled']     = '1';
+			$entry['transaction_id']   = rgar( $action, 'transaction_id' );
+			$entry['transaction_type'] = '1';
+			$entry['payment_status']   = $action['payment_status'];
+			$entry['payment_amount']   = rgar( $action, 'amount' );
+			$entry['payment_date']     = $action['payment_date'];
+			$entry['payment_method']   = rgar( $action, 'payment_method' );
+
+			GFAPI::update_entry( $entry );
+			$this->insert_transaction( $entry['id'], $action['transaction_type'], rgar( $action, 'transaction_id' ), rgar( $action, 'amount' ) );
+			$this->add_note( $entry['id'], 'Payment has been completed.', 'success' );
+			$this->post_payment_action( $entry, $action );
+
+			return true;
+		}
+
+		/**
+		 * Starts a new subscription on the entry.
+		 *
+		 * Faithful to core (class-gf-payment-addon.php start_subscription()):
+		 * sets payment_status Active and transaction_type '2', writes the
+		 * entry, then fires its own post_payment_action. The plugin's
+		 * override adds its scheduling state on top of this.
+		 *
+		 * @param array $entry        Entry.
+		 * @param array $subscription Subscription data (subscription_id, amount).
+		 * @return array The entry.
+		 */
+		public function start_subscription( $entry, $subscription ) {
+			$has_active_subscription = $this->has_subscription( $entry ) && 'Active' === rgar( $entry, 'payment_status' );
+
+			if ( ! $has_active_subscription ) {
+				$entry['payment_status']   = 'Active';
+				$entry['payment_amount']   = rgar( $subscription, 'amount' );
+				$entry['payment_date']     = ! rgempty( 'subscription_start_date', $subscription ) ? $subscription['subscription_start_date'] : gmdate( 'Y-m-d H:i:s' );
+				$entry['transaction_id']   = rgar( $subscription, 'subscription_id' );
+				$entry['transaction_type'] = '2';
+				$entry['is_fulfilled']     = '1';
+
+				GFAPI::update_entry( $entry );
+
+				$subscription['type'] = 'create_subscription';
+				$this->post_payment_action( $entry, $subscription );
+			}
+
+			return $entry;
 		}
 
 		public function add_note( $entry_id, $note, $note_type = 'info' ) {
