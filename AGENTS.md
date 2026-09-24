@@ -131,6 +131,7 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 
 ## Important Rules
 
+- **`readme.txt` carries only the current release.** WordPress.org renders the changelog from `readme.txt`, so it must hold exactly one version entry; `changelog.txt` keeps the full history.
 - **Do NOT add `Requires Plugins: gravityforms` header.** Gravity Forms is not on WordPress.org SVN. The `Requires Plugins` header (WP 6.5+) only works for plugins in the wordpress.org repository and would break activation.
 - **Text domain:** always `chip-for-gravity-forms`.
 - **PHP compatibility:** 7.4 through 8.5.
