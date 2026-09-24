@@ -161,14 +161,39 @@ class GF_Chip_Renewal_Notifications {
 	 * Reads ONLY from the entry. An address supplied in a request is never
 	 * consulted, so a caller cannot redirect a dunning email to itself.
 	 *
+	 * The field holding the address is the one the FEED names in
+	 * `clientInformation_email` — that is the field the customer's address was
+	 * actually collected in, and it is what the checkout path already reads.
+	 * A fixed field id cannot work here: the id is a property of the form, so
+	 * dunning silently resolved to nothing on every form numbered differently
+	 * from whichever one was tested, and no email was ever sent.
+	 *
+	 * The feed is resolved from the entry's own form, and only entry-owned
+	 * values are read, so the request-safety property above is preserved.
+	 *
 	 * @param array $entry Entry.
 	 * @return string Email, or '' when none.
 	 */
 	public static function resolve_recipient( $entry ) {
-		$candidates = array(
-			rgar( $entry, '7' ),
-			rgar( $entry, 'email' ),
-		);
+		$candidates = array();
+
+		$form_id = absint( rgar( $entry, 'form_id' ) );
+		if ( $form_id > 0 ) {
+			$feed = GF_Chip::get_instance()->get_payment_feed( $entry );
+
+			if ( is_array( $feed ) ) {
+				$location = rgars( $feed, 'meta/clientInformation_email' );
+
+				if ( ! empty( $location ) ) {
+					$candidates[] = rgar( $entry, (string) $location );
+				}
+			}
+		}
+
+		// Fallbacks for an entry whose feed is gone (deleted feed, restored
+		// entry) or a form that collects the address in a field literally
+		// named "email".
+		$candidates[] = rgar( $entry, 'email' );
 
 		foreach ( $candidates as $candidate ) {
 			if ( is_string( $candidate ) && is_email( $candidate ) ) {

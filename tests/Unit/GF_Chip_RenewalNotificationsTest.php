@@ -12,6 +12,7 @@
 namespace GravityFormsCHIP\Tests\Unit;
 
 use GF_Chip_Renewal_Notifications;
+use GF_Chip_Test_Feed;
 use GF_Chip_Test_Meta;
 use WP_Mock;
 use PHPUnit\Framework\TestCase;
@@ -27,6 +28,7 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 	public function setUp(): void {
 		WP_Mock::setUp();
 		GF_Chip_Test_Meta::reset();
+		GF_Chip_Test_Feed::reset();
 
 		WP_Mock::userFunction( 'apply_filters' )->andReturnUsing( function ( $tag, $value ) {
 			return $value;
@@ -39,6 +41,7 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 	public function tearDown(): void {
 		WP_Mock::tearDown();
 		GF_Chip_Test_Meta::reset();
+		GF_Chip_Test_Feed::reset();
 	}
 
 	// ---------------------------------------------------------------------
@@ -46,19 +49,63 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 	// ---------------------------------------------------------------------
 
 	/**
-	 * The address on the entry is used.
+	 * The field the FEED names as the email field is the one read.
+	 *
+	 * The field id belongs to the form, so a fixed id sends nothing on any
+	 * form that numbers its fields differently — the defect this asserts
+	 * against.
 	 */
-	public function test_recipient_from_entry_email_field(): void {
+	public function test_recipient_follows_the_feed_email_field(): void {
+		GF_Chip_Test_Feed::set(
+			array(
+				'id'   => 1,
+				'meta' => array( 'clientInformation_email' => '2' ),
+			)
+		);
+
+		$entry = array(
+			'form_id' => 1,
+			'2'       => 'configured@example.test',
+			'7'       => 'wrongfield@example.test',
+		);
+
 		$this->assertSame(
-			'customer@example.test',
-			GF_Chip_Renewal_Notifications::resolve_recipient( array( '7' => 'customer@example.test' ) )
+			'configured@example.test',
+			GF_Chip_Renewal_Notifications::resolve_recipient( $entry )
 		);
 	}
 
 	/**
-	 * A lowercase-keyed email field works too.
+	 * A form whose email field is not the one that happened to be tested.
+	 *
+	 * This is the regression: the resolver previously read a hardcoded field
+	 * id, so on this entry it found nothing and dunning was silently skipped.
+	 */
+	public function test_recipient_resolves_on_a_form_with_a_different_field_id(): void {
+		GF_Chip_Test_Feed::set(
+			array(
+				'id'   => 2,
+				'meta' => array( 'clientInformation_email' => '3' ),
+			)
+		);
+
+		$entry = array(
+			'form_id' => 4,
+			'3'       => 'thirdfield@example.test',
+		);
+
+		$this->assertSame(
+			'thirdfield@example.test',
+			GF_Chip_Renewal_Notifications::resolve_recipient( $entry )
+		);
+	}
+
+	/**
+	 * A lowercase-keyed email field works too, as a fallback.
 	 */
 	public function test_recipient_from_named_field(): void {
+		GF_Chip_Test_Feed::set( array() );
+
 		$this->assertSame(
 			'other@example.test',
 			GF_Chip_Renewal_Notifications::resolve_recipient( array( 'email' => 'other@example.test' ) )
@@ -70,16 +117,22 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 	 * rather than falling back to anything else.
 	 */
 	public function test_recipient_empty_when_absent(): void {
+		GF_Chip_Test_Feed::set( array() );
+
 		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array() ) );
-		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array( '7' => '' ) ) );
+		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array( '2' => '' ) ) );
 	}
 
 	/**
 	 * A malformed address is rejected instead of being passed to wp_mail.
 	 */
 	public function test_recipient_rejects_invalid_address(): void {
-		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array( '7' => 'not-an-email' ) ) );
-		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array( '7' => 'a@b' ) ) );
+		GF_Chip_Test_Feed::set(
+			array( 'id' => 1, 'meta' => array( 'clientInformation_email' => '2' ) )
+		);
+
+		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array( '2' => 'not-an-email' ) ) );
+		$this->assertSame( '', GF_Chip_Renewal_Notifications::resolve_recipient( array( '2' => 'a@b' ) ) );
 	}
 
 	/**

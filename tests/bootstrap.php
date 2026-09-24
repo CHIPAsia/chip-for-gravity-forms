@@ -63,6 +63,21 @@ if ( ! function_exists( 'rgars' ) ) {
 	}
 }
 
+if ( ! function_exists( 'absint' ) ) {
+	/**
+	 * Mirrors WordPress' absint(): absolute value as a non-negative int.
+	 *
+	 * The plugin reads entry/form ids through it, so a missing stub makes
+	 * those paths unreachable from a unit test.
+	 *
+	 * @param mixed $maybeint Value to convert.
+	 * @return int
+	 */
+	function absint( $maybeint ) {
+		return abs( (int) $maybeint );
+	}
+}
+
 if ( ! function_exists( 'rgempty' ) ) {
 	/**
 	 * Mirrors Gravity Forms' rgempty(): true when the key is absent or the
