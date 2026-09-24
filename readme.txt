@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, gravity forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -58,18 +58,23 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 
 == Changelog ==
 
-= 1.3.0 2026-05-28 =
-* Fixed - API singleton returning wrong credentials when a site uses both Global and Form Configuration with different keys.
-* Fixed - `rgar()` argument order in `complete_payment()` that broke delayed feed triggering after payment completion.
-* Added - `WP_Error` and HTTP status code handling in the API client for robust error handling.
-* Added - `get_credentials_for_feed()` helper to centralize credential resolution across payment flows.
-* Added - Unit tests for `GF_Chip` core logic (credentials, callback actions, timezone).
-* Added - PHP 8.5 to the CI compatibility matrix.
-* Added - CONTRIBUTING.md and CLAUDE.md for developer documentation.
-* Added - `.wordpress-org/` assets directory for WordPress.org plugin page banners and screenshots.
-* Changed - Bumped "Tested up to" to WordPress 7.0.
-* Changed - Modernized CI/CD workflows: deploy.yml, prepare-release.yml, pr-summary.yml.
-* Removed - composer.lock from git tracking to reduce merge conflicts.
+= 1.4.0 2026-09-25 =
+* Added - Subscription (recurring billing) support. Set a feed's Transaction Type to Subscription to sell a recurring plan with a recurring amount, billing cycle, optional trial and setup fee, and a limited number of installments. Cards are stored at CHIP; renewals are charged automatically with no customer present.
+* Added - An hourly renewal engine that charges each due subscription against its stored CHIP recurring token, anchored on the date the payment was due rather than on the date the check ran.
+* Added - Automatic payment recovery. A failed renewal is retried on a 1, 3, and 5 day ladder, the customer is emailed a secure single-use link to pay the outstanding amount and save a new card in one step, and the subscription is marked Expired once the ladder is exhausted instead of retrying indefinitely.
+* Added - An admin **CHIP Subscriptions** page listing every subscription with its status, next payment date and retry count, with actions to retry a failed payment now, cancel a subscription, or re-send the customer's update-card link.
+* Added - A customer-facing secure card-update page. The link is signed, single-use, expires after 7 days and is emailed only to the address on the entry; card details are entered only on CHIP's hosted page, never in the WordPress admin.
+* Added - Three subscription notification events (Subscription Renewed, Subscription Payment Failed, Subscription Expired) and the `{chip_update_card_link}` merge tag.
+* Added - A card-only notice in the feed settings explaining that recurring tokens are issued for cards only, so a Subscription feed offers cards while one-time feeds keep every method the brand has enabled.
+* Added - Release-metadata tests asserting the declared WordPress floor agrees across the plugin header, readme.txt, README.md and phpcs.xml, that `Tested up to` is a MAJOR.MINOR version, that the header version, version constant and Stable tag agree, and that every screenshot readme.txt names actually exists.
+* Fixed - The plugin header now declares `Requires at least` and `Requires PHP`, so WordPress can block an install on an unsupported site and the plugin page shows the requirements. Previously only readme.txt carried them, which WordPress does not read for install or update checks.
+* Fixed - readme.txt declared a sixth screenshot whose image was never committed, so the WordPress.org plugin page served a 404 for it. The entry now describes the CHIP Subscriptions page and the image ships with the plugin.
+* Fixed - The payment amount is resolved from the field the configured transaction type uses, so a feed left on the default no longer breaks the checkout redirect.
+* Fixed - The plugin's own asset URLs (menu icon, settings screenshot) are anchored on the plugin root instead of `includes/`, where no assets exist and every one of them 404'd.
+* Fixed - The refund button is kept on an active subscription entry; the Cancel Subscription button is reachable.
+* Fixed - Subscription lifecycle hooks are implemented and `entry_info()` no longer shadows Gravity Forms core, so subscription state renders correctly on the entry screen.
+* Changed - Bumped \"Gravity Forms tested up to\" to 3.1 and WordPress \"Tested up to\" to 7.1, both verified against the E2E environment.
+* Changed - README.md now documents subscription support, the card-only constraint and the plugin's requirements; it previously described one-time payments only.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
 
