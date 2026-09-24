@@ -147,7 +147,7 @@ docker compose run --rm plugin-check ./scripts/run-plugin-check.sh
 ## CI/CD Workflows
 
 - `plugin-check.yml` — runs on push to `main` and on PRs: PHPCompatibility matrix (7.4/8.0/8.2/8.4/8.5), PHPUnit, PHPCS.
-- `plugin-check-main.yml` — runs on push to `main` only: WordPress Plugin Check (with `continue-on-error`, see the TODO in the workflow).
+- `plugin-check-main.yml` — runs on push to `main` only: WordPress Plugin Check. A real gate — do not add `continue-on-error`. Do NOT copy `.wp-env.json` into `build-dir`: the action writes its own config in the working directory and only excludes a `.wp-env.json` it created itself — a copy placed inside `build-dir` is scanned as a plugin file and trips `hidden_files`.
 - `deploy.yml` — runs on tag push or manual `workflow_dispatch`: deploys to SVN (trunk + new tag), creates GitHub release with ZIP asset.
 - `prepare-release.yml` — manual: AI-generated changelog + version bump + release PR.
 - `release-zip.yml` — runs on GitHub release creation: attaches ZIP asset.
