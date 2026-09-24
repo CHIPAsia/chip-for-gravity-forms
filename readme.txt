@@ -54,7 +54,7 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 3. Form with CHIP payment - Form integrated with CHIP as a payment feed.
 4. CHIP payment page - Secure hosted checkout where the customer completes payment.
 5. Confirmation page - Success page after payment is completed.
-6. Entry with refund - Process full refunds from Gravity Forms → Entries when refund is enabled.
+6. CHIP Subscriptions - Every subscription with its status, next payment date and retry count.
 
 == Changelog ==
 

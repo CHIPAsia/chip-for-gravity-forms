@@ -4,7 +4,7 @@
 
 # CHIP for Gravity Forms
 
-The official CHIP payment add-on for Gravity Forms. Accept payments seamlessly with Malaysia's leading payment methods including FPX, credit/debit cards, DuitNow QR, and e-wallets.
+The official CHIP payment add-on for Gravity Forms. Accept payments seamlessly with Malaysia's leading payment methods including FPX, credit/debit cards, DuitNow QR, and e-wallets — for one-time payments and recurring subscriptions.
 
 ## Features
 
@@ -12,7 +12,20 @@ The official CHIP payment add-on for Gravity Forms. Accept payments seamlessly w
 - **Global and form-specific settings** - Set Brand ID and Secret Key once globally or override per form
 - **Multiple payment methods** - FPX, Credit/Debit Cards, DuitNow QR, E-Wallets, and more via CHIP hosted checkout
 - **Client data mapping** - Map form fields to CHIP client metadata (e.g. legal_name, address, country)
+- **Subscriptions** - Sell recurring plans with a recurring amount, billing cycle, optional trial, setup fee, and a limited number of installments
+- **Automatic renewals** - CHIP charges the stored card on schedule; renewals run with no customer present
+- **Recovery and dunning** - A failed renewal is retried on a 1, 3, and 5 day ladder, the customer is emailed a secure link to pay and update their card, and you can re-send that link from the admin
+- **Subscriptions list** - See every subscription, its status, next payment date and retry count in one admin page
 - **Refund from entries** - Process full refunds from Gravity Forms → Entries when enabled in settings
+- **Webhook support** - Reliable payment status updates via CHIP webhooks
+
+**Subscriptions are card-only.** CHIP's recurring tokens can only be issued for card payments, so a form feed set to the Subscription transaction type offers cards only. FPX, DuitNow QR and e-wallets remain available on one-time forms.
+
+## Requirements
+
+- WordPress 6.3 or greater
+- Gravity Forms plugin (active), tested up to 3.1
+- PHP 7.4 or greater (PHP 8.0+ recommended)
 
 ## Installation
 
