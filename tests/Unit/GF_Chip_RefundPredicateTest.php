@@ -75,37 +75,29 @@ class GF_Chip_RefundPredicateTest extends TestCase {
 	 * The widened predicate must stay narrow in the direction that matters:
 	 * a subscription that is not live has nothing to refund.
 	 *
-	 * @dataProvider provide_non_refundable_subscription_states
-	 *
-	 * @param string $status Gravity Forms payment status.
+	 * Asserted in a loop rather than through a data provider on purpose. CI
+	 * installs the newest phpunit via setup-php while composer pins 9.x, and
+	 * the two disagree about providers: 12 rejects the `@dataProvider`
+	 * annotation, while 9 does not understand the `#[DataProvider]` attribute
+	 * that replaces it. A loop is correct on both, and still names the
+	 * offending status in its failure message.
 	 */
-	public function test_non_live_subscription_states_offer_no_refund( $status ): void {
-		$entry = array(
-			'transaction_id'   => 'pur_sub_1',
-			'payment_method'   => 'visa',
-			'payment_status'   => $status,
-			'transaction_type' => '2',
-		);
+	public function test_non_live_subscription_states_offer_no_refund(): void {
+		$statuses = array( 'Pending', 'Processing', 'Cancelled', 'Failed', 'Refunded' );
 
-		$this->assertFalse(
-			GF_Chip::should_render_refund_ui( $entry ),
-			"a '{$status}' subscription must not offer a refund"
-		);
-	}
+		foreach ( $statuses as $status ) {
+			$entry = array(
+				'transaction_id'   => 'pur_sub_1',
+				'payment_method'   => 'visa',
+				'payment_status'   => $status,
+				'transaction_type' => '2',
+			);
 
-	/**
-	 * Statuses where the refund button must not render.
-	 *
-	 * @return array[]
-	 */
-	public function provide_non_refundable_subscription_states() {
-		return array(
-			'pending before the first payment settled' => array( 'Pending' ),
-			'processing, outcome not yet known'        => array( 'Processing' ),
-			'cancelled'                                => array( 'Cancelled' ),
-			'failed'                                   => array( 'Failed' ),
-			'already refunded'                         => array( 'Refunded' ),
-		);
+			$this->assertFalse(
+				GF_Chip::should_render_refund_ui( $entry ),
+				"a '{$status}' subscription must not offer a refund"
+			);
+		}
 	}
 
 	/**
