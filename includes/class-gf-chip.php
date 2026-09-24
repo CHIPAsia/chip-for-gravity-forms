@@ -1158,7 +1158,14 @@ class GF_Chip extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . '(): Started for entry id: #' . $entry_id );
 
-		$payment_amount_location = rgars( $feed, 'meta/paymentAmount' ); // Location for payment amount.
+		// Gravity Forms stores the amount field under a different key per
+		// transaction type: a subscription feed writes recurringAmount and
+		// hides paymentAmount entirely, so reading paymentAmount here left
+		// $payment_amount_location empty, no line item matched, and the
+		// purchase was sent with an empty name and a zero price. CHIP
+		// rejected it with HTTP 400, no payment id was stored, and the
+		// customer saw the default confirmation instead of the payment page.
+		$payment_amount_location = $this->get_payment_field( $feed ); // Location for payment amount.
 		$name_location           = rgars( $feed, 'meta/clientInformation_full_name' ); // Location for buyer name.
 		$email_location          = rgars( $feed, 'meta/clientInformation_email' ); // Location for buyer email address.
 		$notes_location          = rgars( $feed, 'meta/purchaseInformation_notes' ); // Location for purchase notes.
