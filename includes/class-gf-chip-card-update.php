@@ -321,6 +321,11 @@ class GF_Chip_Card_Update {
 		gform_update_meta( $entry_id, self::META_LINK_EXPIRY, $expiry, $form_id );
 		gform_update_meta( $entry_id, self::META_LINK_NONCE, $nonce, $form_id );
 
+		// A fresh link starts a fresh journey, so the marker that stops a
+		// return page settling twice must not persist into it.
+		gform_delete_meta( $entry_id, GF_Chip_Card_Update_Page::META_RETURN_SETTLED );
+		gform_delete_meta( $entry_id, GF_Chip_Card_Update_Flow::META_UPDATE_PURCHASE );
+
 		return add_query_arg(
 			array(
 				self::ARG_ENTRY     => $entry_id,

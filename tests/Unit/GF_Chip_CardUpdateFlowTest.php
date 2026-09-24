@@ -82,6 +82,88 @@ class GF_Chip_CardUpdateFlowTest extends TestCase {
 	// ---------------------------------------------------------------------
 
 	/**
+	 * The params name the brand.
+	 *
+	 * CHIP rejects the create call with `{"brand_id":[{"code":"required"}]}`
+	 * when this is absent — it is not inferred from the credentials the API
+	 * client was constructed with. A card-update link therefore failed at the
+	 * CHIP handoff on every real attempt while the rest of the page worked,
+	 * which is why this is asserted on the params themselves.
+	 */
+	public function test_params_carry_the_brand_id(): void {
+		$params = GF_Chip_Card_Update_Flow::build_purchase_params(
+			array(
+				'amount_cents' => 200,
+				'currency'     => 'MYR',
+				'entry_id'     => 42,
+				'return_url'   => 'https://example.test/return',
+				'brand_id'     => 'brand-abc123',
+			)
+		);
+
+		$this->assertSame( 'brand-abc123', $params['brand_id'], 'CHIP requires brand_id on the create call' );
+	}
+
+	/**
+	 * A missing brand is sent as an empty string, never silently dropped.
+	 *
+	 * Sending the key at all is what keeps the failure a visible API error
+	 * rather than a param that quietly disappears.
+	 */
+	public function test_params_always_include_the_brand_key(): void {
+		$params = GF_Chip_Card_Update_Flow::build_purchase_params(
+			array(
+				'amount_cents' => 0,
+				'currency'     => 'MYR',
+				'entry_id'     => 42,
+				'return_url'   => 'https://example.test/return',
+			)
+		);
+
+		$this->assertArrayHasKey( 'brand_id', $params );
+	}
+
+	public function test_params_carry_the_client_block(): void {
+		$params = GF_Chip_Card_Update_Flow::build_purchase_params(
+			array(
+				'amount_cents' => 200,
+				'currency'     => 'MYR',
+				'entry_id'     => 42,
+				'return_url'   => 'https://example.test/return',
+				'brand_id'     => 'brand-abc123',
+				'email'        => 'buyer@example.test',
+				'full_name'    => 'Wan Zulkarnain',
+			)
+		);
+
+		$this->assertArrayHasKey( 'client', $params, 'CHIP rejects the purchase without a client' );
+		$this->assertSame( 'buyer@example.test', $params['client']['email'] );
+		$this->assertSame( 'Wan Zulkarnain', $params['client']['full_name'] );
+	}
+
+	/**
+	 * CHIP caps the client name at 30 characters.
+	 *
+	 * An over-long name is rejected by the API, so it is truncated here
+	 * rather than at the network call that would otherwise fail.
+	 */
+	public function test_client_name_is_capped_to_the_api_limit(): void {
+		$params = GF_Chip_Card_Update_Flow::build_purchase_params(
+			array(
+				'amount_cents' => 0,
+				'currency'     => 'MYR',
+				'entry_id'     => 42,
+				'return_url'   => 'https://example.test/return',
+				'brand_id'     => 'brand-abc123',
+				'email'        => 'buyer@example.test',
+				'full_name'    => str_repeat( 'A', 80 ),
+			)
+		);
+
+		$this->assertSame( 30, strlen( $params['client']['full_name'] ) );
+	}
+
+	/**
 	 * The params carry the card-only whitelist, force_recurring and the
 	 * exact platform value CHIP requires.
 	 */
@@ -92,6 +174,7 @@ class GF_Chip_CardUpdateFlowTest extends TestCase {
 				'currency'     => 'MYR',
 				'entry_id'     => 42,
 				'return_url'   => 'https://example.test/return',
+				'brand_id'     => 'brand-abc123',
 			)
 		);
 
@@ -431,5 +514,115 @@ class GF_Chip_CardUpdateFlowTest extends TestCase {
 
 		$this->assertFalse( $plan['settled'] );
 		$this->assertSame( 'on-hold', $plan['status'] );
+	}
+
+	// ---------------------------------------------------------------------
+	// The client block's values.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The name is joined from the field the feed names, in form order.
+	 *
+	 * A hardcoded field id silently produced an empty client name on every
+	 * form that numbered its fields differently.
+	 */
+	public function test_name_is_joined_from_the_feed_named_field(): void {
+		$entry = array(
+			'3.3' => 'Wan',
+			'3.6' => 'Zulkarnain',
+			'7.3' => 'Someone',
+		);
+
+		$this->assertSame(
+			'Wan Zulkarnain',
+			GF_Chip_Card_Update_Flow::join_name_parts( $entry, array( '3.3', '3.6' ), '3' )
+		);
+	}
+
+	/**
+	 * A field the entry does not hold contributes nothing.
+	 */
+	public function test_empty_name_parts_are_skipped(): void {
+		$entry = array( '3.3' => 'Wan', '3.6' => '' );
+
+		$this->assertSame(
+			'Wan',
+			GF_Chip_Card_Update_Flow::join_name_parts( $entry, array( '3.3', '3.6' ), '3' )
+		);
+	}
+
+	/**
+	 * A single-line field named by the feed is used as-is.
+	 */
+	public function test_single_line_name_field_is_used_as_is(): void {
+		$entry = array( '3' => 'Wan Zulkarnain' );
+
+		$this->assertSame(
+			'Wan Zulkarnain',
+			GF_Chip_Card_Update_Flow::join_name_parts( $entry, array(), '3' )
+		);
+	}
+
+	/**
+	 * Nothing to join yields an empty string, never a stray separator.
+	 */
+	public function test_no_name_parts_yields_an_empty_string(): void {
+		$this->assertSame( '', GF_Chip_Card_Update_Flow::join_name_parts( array(), array(), '3' ) );
+	}
+
+	// ---------------------------------------------------------------------
+	// The return trip.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * A return trip settles the purchase the link recorded.
+	 *
+	 * CHIP does not append the purchase id to success_redirect, so the return
+	 * arrives with nothing to settle from. Before this, a customer could pay
+	 * the outstanding cycle through the card-update link and the subscription
+	 * stayed `on-hold` with the debt unpaid in Gravity Forms — money taken,
+	 * nothing recorded. The purchase must therefore come from the entry.
+	 */
+	public function test_return_settles_the_recorded_purchase(): void {
+		$this->assertTrue(
+			GF_Chip_Card_Update_Flow::should_settle_return( 'pur_recorded', '' )
+		);
+	}
+
+	/**
+	 * A return with no recorded purchase has nothing to settle.
+	 *
+	 * That is the state of a customer who opened the link but never reached
+	 * the payment page; they must see the page, not a settled subscription.
+	 */
+	public function test_return_without_a_recorded_purchase_settles_nothing(): void {
+		$this->assertFalse( GF_Chip_Card_Update_Flow::should_settle_return( '', '' ) );
+		$this->assertFalse( GF_Chip_Card_Update_Flow::should_settle_return( '   ', '' ) );
+	}
+
+	/**
+	 * A page reload must not settle the same purchase twice.
+	 *
+	 * Settling twice would re-apply the cycle: the subscription would be
+	 * pushed a further month forward for one payment.
+	 */
+	public function test_a_settled_return_is_not_settled_again(): void {
+		$this->assertFalse( GF_Chip_Card_Update_Flow::should_settle_return( 'pur_recorded', '1' ) );
+	}
+
+	/**
+	 * A fresh link must be able to settle again after an earlier journey.
+	 *
+	 * The marker is cleared when a link is issued, so the next journey is not
+	 * blocked by the previous one.
+	 */
+	public function test_a_new_link_clears_the_settled_marker(): void {
+		$link_source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-gf-chip-card-update.php' );
+
+		$this->assertStringContainsString(
+			'gform_delete_meta( $entry_id, GF_Chip_Card_Update_Page::META_RETURN_SETTLED )',
+			$link_source,
+			'issue_link must clear the marker so the next journey can settle'
+		);
 	}
 }

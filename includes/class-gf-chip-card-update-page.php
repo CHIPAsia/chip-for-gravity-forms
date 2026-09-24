@@ -47,6 +47,17 @@ class GF_Chip_Card_Update_Page {
 	const ARG_PURCHASE = 'chip_purchase';
 
 	/**
+	 * Entry meta recording that a return trip has been settled.
+	 *
+	 * The return carries no purchase id, so the recorded purchase is settled
+	 * on the way back. This marker keeps a reload of that page from settling
+	 * (and re-issuing a link) a second time.
+	 *
+	 * @var string
+	 */
+	const META_RETURN_SETTLED = 'chip_card_update_returned';
+
+	/**
 	 * Renders nothing and returns when the request is not ours.
 	 *
 	 * Hooked early on `wp`, alongside the existing confirmation handler.
@@ -86,8 +97,62 @@ class GF_Chip_Card_Update_Page {
 			exit;
 		}
 
+		// A returning customer arrives with no purchase id: CHIP does not
+		// append one to success_redirect, so the `chip_purchase` branch above
+		// only ever fires for a caller that supplies it. The purchase this
+		// entry's link created was recorded before the handoff, and the link
+		// is the authenticator, so settle that one — read from the entry, not
+		// from the request, so it cannot be pointed at another purchase.
+		//
+		// Only a purchase CHIP actually reports as completed is settled: a
+		// customer who opened the link and walked away must still see the
+		// payment page, not an error.
+		if ( self::settle_returned_purchase( $entry_id ) ) {
+			exit;
+		}
+
 		self::render_page( $entry_id, $request );
 		exit;
+	}
+
+	/**
+	 * Settles the recorded card-update purchase if CHIP says it completed.
+	 *
+	 * @param int $entry_id Entry id.
+	 * @return bool True when the return trip was settled.
+	 */
+	private static function settle_returned_purchase( $entry_id ) {
+		$recorded = (string) gform_get_meta( $entry_id, GF_Chip_Card_Update_Flow::META_UPDATE_PURCHASE );
+
+		if ( ! GF_Chip_Card_Update_Flow::should_settle_return( $recorded, gform_get_meta( $entry_id, self::META_RETURN_SETTLED ) ) ) {
+			return false;
+		}
+
+		$entry = self::load_subscription_entry( $entry_id );
+
+		if ( null === $entry ) {
+			return false;
+		}
+
+		$feed = self::find_feed( $entry );
+
+		if ( null === $feed ) {
+			return false;
+		}
+
+		$credentials = GF_Chip::get_instance()->get_credentials_for_feed( $feed );
+		$client      = GF_CHIP_API::get_instance( $credentials['secret_key'], $credentials['brand_id'] );
+		$purchase    = $client->get_payment( $recorded );
+
+		if ( ! GF_Chip_Card_Update_Flow::is_completed( $purchase ) ) {
+			return false;
+		}
+
+		gform_update_meta( $entry_id, self::META_RETURN_SETTLED, '1' );
+
+		self::finish_purchase( $entry_id, $recorded );
+
+		return true;
 	}
 
 	/**
@@ -309,6 +374,97 @@ class GF_Chip_Card_Update_Page {
 	}
 
 	/**
+	 * Resolves the customer's email for the CHIP purchase.
+	 *
+	 * CHIP wants an email on the client block. The field is the one the FEED
+	 * names in `clientInformation_email` — the same field the checkout path
+	 * bills — so this cannot drift from what the customer actually entered. A
+	 * hardcoded field id would silently produce an empty client on any form
+	 * that numbers its fields differently.
+	 *
+	 * Read from the entry only.
+	 *
+	 * @param array $entry Entry.
+	 * @param array $feed  Feed.
+	 * @return string
+	 */
+	private static function resolve_customer_email( $entry, $feed ) {
+		$location = (string) rgars( $feed, 'meta/clientInformation_email' );
+		$email    = '' !== $location ? (string) rgar( $entry, $location ) : '';
+
+		return trim( $email );
+	}
+
+	/**
+	 * Resolves the customer's name for the CHIP purchase.
+	 *
+	 * CHIP wants a name on the client block. The field is the one the FEED
+	 * names in `clientInformation_full_name` — the same field the checkout
+	 * path reads — so this cannot drift from what the customer actually
+	 * filled in. A hardcoded field id would silently produce an empty name on
+	 * any form that numbers its fields differently.
+	 *
+	 * Read from the entry only.
+	 *
+	 * @param array $entry Entry.
+	 * @return string
+	 */
+	private static function resolve_customer_name( $entry ) {
+		$feed = self::find_feed( $entry );
+
+		if ( is_array( $feed ) ) {
+			$location = (string) rgars( $feed, 'meta/clientInformation_full_name' );
+
+			if ( '' !== $location ) {
+				// Prefer the form's own input order, which is the order the
+				// checkout path builds the name in.
+				$order = array();
+
+				$form = GFAPI::get_form( rgar( $entry, 'form_id' ) );
+
+				if ( is_array( $form ) ) {
+					foreach ( (array) rgar( $form, 'fields' ) as $field ) {
+						if ( 'name' !== rgar( (array) $field, 'type' ) ) {
+							continue;
+						}
+
+						$field_id = (string) rgar( (array) $field, 'id' );
+
+						if ( $field_id !== (string) $location ) {
+							continue;
+						}
+
+						foreach ( (array) rgar( (array) $field, 'inputs' ) as $input ) {
+							$order[] = (string) rgar( (array) $input, 'id' );
+						}
+					}
+				}
+
+				// Fall back to whatever the entry holds, in key order.
+				if ( empty( $order ) ) {
+					foreach ( array_keys( $entry ) as $key ) {
+						if ( 0 === strpos( (string) $key, $location . '.' ) ) {
+							$order[] = (string) $key;
+						}
+					}
+
+					sort( $order );
+				}
+
+				$name = GF_Chip_Card_Update_Flow::join_name_parts( $entry, $order, $location );
+
+				if ( '' !== $name ) {
+					return $name;
+				}
+			}
+		}
+
+		$fallback = rgar( $entry, 'full_name' );
+
+		return is_string( $fallback ) ? trim( $fallback ) : '';
+	}
+
+	/**
 	 * Resolves the currency for an entry.
 	 *
 	 * @param array $entry Entry.
@@ -362,6 +518,9 @@ class GF_Chip_Card_Update_Page {
 			return;
 		}
 
+		// Read from the entry only, never from the request.
+		$recipient = self::resolve_customer_email( $entry, $feed );
+
 		$return_url = add_query_arg(
 			array(
 				GF_Chip_Card_Update::ARG_ENTRY     => $entry_id,
@@ -378,6 +537,11 @@ class GF_Chip_Card_Update_Page {
 				'currency'     => self::resolve_currency( $entry ),
 				'entry_id'     => $entry_id,
 				'return_url'   => $return_url,
+				'brand_id'     => $credentials['brand_id'],
+				// CHIP requires the customer on the create call. Both are
+				// read from the entry, never from the request.
+				'email'        => $recipient,
+				'full_name'    => self::resolve_customer_name( $entry ),
 			)
 		);
 
