@@ -630,10 +630,16 @@ class GF_Chip_Subscriptions_Page {
 	/**
 	 * Subscription entry ids matching a search term.
 	 *
-	 * Matches the entry id when the term is numeric, and otherwise searches the
-	 * values a subscription entry carries (the customer's email or name as the
-	 * mapped fields stored them), so an operator can find a row by the
-	 * customer rather than by entry number.
+	 * Matches the entry id when the term is numeric, and otherwise the entry's
+	 * own FIELD values — the customer's name, email, product — which is how an
+	 * operator actually searches for a subscription.
+	 *
+	 * Scoped deliberately to field values. Searching every row of
+	 * gf_entry_meta also matches Gravity Forms' own bookkeeping — serialized
+	 * blobs like processed_feeds, gform_product_info and submission_speeds
+	 * contain arbitrary digits — so a search for "77" matched an unrelated
+	 * entry whose serialized feed happened to contain that number. Field keys
+	 * are plain ids ("3", "4.1"), so they are the only keys worth matching.
 	 *
 	 * @param string $search Search term.
 	 * @return array Entry ids.
@@ -655,40 +661,35 @@ class GF_Chip_Subscriptions_Page {
 			return $matches;
 		}
 
-		if ( ctype_digit( $search ) ) {
-			$matches[] = (int) $search;
-		}
-
-		$entry_table = $wpdb->prefix . 'gf_entry';
-
-		// Match against the entry's own scalar values. Escaping is handled by
-		// the search-criteria API below where possible; this query is bounded
-		// to the subscription set and uses a LIKE on prepared values.
-		$like = '%' . $wpdb->esc_like( $search ) . '%';
-
 		$id_list = implode( ',', array_map( 'absint', $subscription_ids ) );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list search; must reflect current rows.
-		$found = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT id FROM {$entry_table} WHERE id IN ({$id_list}) AND (id = %s OR date_created LIKE %s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
-				$search,
-				$like
-			)
-		);
+		if ( ctype_digit( $search ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list search; must reflect current rows.
+			$by_id = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT id FROM {$wpdb->prefix}gf_entry WHERE id IN ({$id_list}) AND id = %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
+					(int) $search
+				)
+			);
 
-		foreach ( (array) $found as $id ) {
-			$matches[] = (int) $id;
+			foreach ( (array) $by_id as $id ) {
+				$matches[] = (int) $id;
+			}
 		}
 
-		// Also match what the entry's own fields hold (email, name…), which is
-		// how an operator actually searches for a subscription.
-		$meta_table = $wpdb->prefix . 'gf_entry_meta';
+		// Field values only: the meta keys Gravity Forms writes for form
+		// fields are plain ids ("3") or ids with a sub-key ("4.1"). Everything
+		// else on gf_entry_meta is bookkeeping, not something a person searches
+		// by.
+		$like = '%' . $wpdb->esc_like( $search ) . '%';
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list search; must reflect current rows.
 		$by_value = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT DISTINCT entry_id FROM {$meta_table} WHERE entry_id IN ({$id_list}) AND meta_value LIKE %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
+				"SELECT DISTINCT entry_id FROM {$wpdb->prefix}gf_entry_meta
+				 WHERE meta_key REGEXP '^[0-9]+([.][0-9]+)?$'
+				   AND meta_value LIKE %s
+				   AND entry_id IN ({$id_list})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
 				$like
 			)
 		);
@@ -697,9 +698,7 @@ class GF_Chip_Subscriptions_Page {
 			$matches[] = (int) $id;
 		}
 
-		$matches = array_values( array_unique( array_filter( array_map( 'absint', $matches ) ) ) );
-
-		return $matches;
+		return array_values( array_unique( array_filter( array_map( 'absint', $matches ) ) ) );
 	}
 
 	/**

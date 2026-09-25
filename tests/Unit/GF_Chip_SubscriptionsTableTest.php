@@ -573,6 +573,66 @@ class GF_Chip_SubscriptionsTableTest extends TestCase {
 	}
 
 	/**
+	 * A search must match the entry's own field values, never Gravity Forms'
+	 * bookkeeping.
+	 *
+	 * Searching every row of gf_entry_meta matched serialized blobs too —
+	 * processed_feeds, gform_product_info, submission_speeds — which contain
+	 * arbitrary digits. A search for "77" then returned an unrelated
+	 * subscription whose serialized feed happened to contain that number,
+	 * which is worse than no search at all: the results look plausible.
+	 *
+	 * The query is pinned to only ever match keys that are form field ids.
+	 */
+	public function test_search_matches_field_values_and_not_gravity_forms_bookkeeping() {
+		$src = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php' );
+
+		$start = strpos( $src, 'public static function search_entry_ids(' );
+		$this->assertNotFalse( $start );
+
+		$end  = strpos( $src, 'private static function all_subscription_entry_ids(', $start );
+		$body = substr( $src, $start, $end - $start );
+
+		$this->assertStringContainsString(
+			"REGEXP '^[0-9]+([.][0-9]+)?$'",
+			$body,
+			'the value search must be restricted to form field keys'
+		);
+
+		// The restriction must not be relaxed back to matching the whole meta
+		// table: that is what produced the false matches.
+		$this->assertStringContainsString(
+			'meta_key REGEXP',
+			$body,
+			'the value search must be keyed on form field ids'
+		);
+	}
+
+	/**
+	 * The search must be scoped to subscription entries, so a one-time entry
+	 * can never appear in the results.
+	 */
+	public function test_search_is_scoped_to_subscription_entries() {
+		$src = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php' );
+
+		$start = strpos( $src, 'public static function search_entry_ids(' );
+		$end   = strpos( $src, 'private static function all_subscription_entry_ids(', $start );
+		$body  = substr( $src, $start, $end - $start );
+
+		$this->assertStringContainsString(
+			'$subscription_ids = self::all_subscription_entry_ids();',
+			$body,
+			'the search must be bounded to the subscription set'
+		);
+
+		$this->assertStringContainsString(
+			'entry_id IN ({$id_list})',
+			$body,
+			'the value query must be bounded to the subscription set'
+		);
+	}
+
+	/**
 	 * The views answer "how many are on hold", so each state gets a view and
 	 * the current one is marked — the same `subsubsub` markup core uses.
 	 */
