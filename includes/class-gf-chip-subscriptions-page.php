@@ -495,10 +495,16 @@ class GF_Chip_Subscriptions_Page {
 			return;
 		}
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only redirect flag.
+		$reason = isset( $_GET['reason'] ) ? sanitize_key( wp_unslash( $_GET['reason'] ) ) : '';
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only redirect flag, no state change.
+		$entry_id = isset( $_GET['entry_id'] ) ? absint( wp_unslash( $_GET['entry_id'] ) ) : 0;
+
 		$messages = array(
 			'charged' => array( 'success', __( 'Retry succeeded: the outstanding payment was collected.', 'chip-for-gravity-forms' ) ),
 			'failed'  => array( 'error', __( 'Retry declined by the gateway. The subscription remains on hold and the attempt has been counted.', 'chip-for-gravity-forms' ) ),
-			'skipped' => array( 'warning', __( 'Nothing to retry: the subscription is not due, or has no stored card.', 'chip-for-gravity-forms' ) ),
+			'skipped' => array( 'warning', self::skipped_message( $reason, $entry_id ) ),
 			'refused' => array( 'error', __( 'Retry refused: only a live subscription with a stored card can be retried.', 'chip-for-gravity-forms' ) ),
 		);
 
@@ -511,6 +517,124 @@ class GF_Chip_Subscriptions_Page {
 			esc_attr( $messages[ $retry ][0] ),
 			esc_html( $messages[ $retry ][1] )
 		);
+	}
+
+	/**
+	 * Why a retry collected nothing, phrased as something to act on.
+	 *
+	 * Each message says which subscription this is and what would change the
+	 * answer. "Not due, or has no stored card" made the operator work out
+	 * which of four unrelated situations applied — and one of those four is
+	 * fixable from this very screen, which the old wording hid.
+	 *
+	 * @param string $reason   One of the GF_Chip_Renewals::BLOCKED_* constants.
+	 * @param int    $entry_id Entry id, for the cross-reference.
+	 * @return string
+	 */
+	private static function skipped_message( $reason, $entry_id ) {
+		$entry = $entry_id > 0 ? sprintf( ' (#%d)', $entry_id ) : '';
+
+		switch ( $reason ) {
+			case GF_Chip_Renewals::BLOCKED_NOT_YET_DUE:
+				$next = $entry_id > 0
+					? self::entry_next_payment( $entry_id )
+					: '';
+
+				if ( '' !== $next ) {
+					return sprintf(
+						/* translators: 1: entry reference, 2: next payment datetime, 3: site timezone label. */
+						__( 'Nothing to do yet%1$s: the next payment is not due until %2$s (%3$s). It will be collected automatically — press Retry only if you want to charge it before then.', 'chip-for-gravity-forms' ),
+						$entry,
+						$next,
+						self::timezone_label()
+					);
+				}
+
+				return sprintf(
+					/* translators: %s: entry reference. */
+					__( 'Nothing to do yet%1$s: this subscription is not due for collection.', 'chip-for-gravity-forms' ),
+					$entry
+				);
+
+			case GF_Chip_Renewals::BLOCKED_NO_TOKEN:
+				return sprintf(
+					/* translators: %s: entry reference. */
+					__( 'No stored card for this subscription%1$s, so there is nothing to charge. Send an update-card link first, then retry.', 'chip-for-gravity-forms' ),
+					$entry
+				);
+
+			case GF_Chip_Renewals::BLOCKED_NO_SCHEDULE:
+				return sprintf(
+					/* translators: %s: entry reference. */
+					__( 'This subscription%1$s has no next payment date, so there is nothing to collect. Check the feed’s billing cycle.', 'chip-for-gravity-forms' ),
+					$entry
+				);
+
+			case GF_Chip_Renewals::BLOCKED_STATE:
+				return sprintf(
+					/* translators: %s: entry reference. */
+					__( 'This subscription%1$s is cancelled, expired or still pending, so it will not be charged. Reactivate it first if that is wrong.', 'chip-for-gravity-forms' ),
+					$entry
+				);
+
+			case GF_Chip_Renewals::BLOCKED_NOT_SUBSCRIPTION:
+				return sprintf(
+					/* translators: %s: entry reference. */
+					__( 'This entry%1$s is not a subscription, so there is no renewal to collect.', 'chip-for-gravity-forms' ),
+					$entry
+				);
+		}
+
+		return sprintf(
+			/* translators: %s: entry reference. */
+			__( 'Nothing to retry%1$s: this subscription is not due for collection.', 'chip-for-gravity-forms' ),
+			$entry
+		);
+	}
+
+	/**
+	 * The next-payment datetime for an entry, in the site's timezone.
+	 *
+	 * Read only for display. The stored value is UTC, and showing it raw would
+	 * put a date in front of an operator that is hours off from the date the
+	 * customer was told.
+	 *
+	 * @param int $entry_id Entry id.
+	 * @return string Formatted local datetime, or '' when unavailable.
+	 */
+	private static function entry_next_payment( $entry_id ) {
+		$next = gform_get_meta( $entry_id, 'chip_sub_next_payment' );
+
+		if ( empty( $next ) ) {
+			return '';
+		}
+
+		return self::format_local( (string) $next );
+	}
+
+	/**
+	 * Formats a stored UTC datetime in the site's timezone.
+	 *
+	 * @param string $utc UTC datetime, 'Y-m-d H:i:s'.
+	 * @return string
+	 */
+	private static function format_local( $utc ) {
+		$timestamp = strtotime( $utc . ' UTC' );
+
+		if ( false === $timestamp ) {
+			return $utc;
+		}
+
+		return wp_date( 'Y-m-d H:i', $timestamp ) . '';
+	}
+
+	/**
+	 * The site's timezone, for labelling a displayed time.
+	 *
+	 * @return string
+	 */
+	private static function timezone_label() {
+		return wp_timezone_string();
 	}
 
 	/**
@@ -1080,6 +1204,19 @@ class GF_Chip_Subscriptions_Page {
 	private static function render_notice() {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only outcome flag, no state change.
 		$sent = isset( $_GET['sent'] ) ? absint( wp_unslash( $_GET['sent'] ) ) : 0;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only outcome flag, no state change.
+		$failed = isset( $_GET['sendfail'] ) ? absint( wp_unslash( $_GET['sendfail'] ) ) : 0;
+
+		if ( $failed > 0 ) {
+			printf(
+				'<div class="notice notice-error is-dismissible"><p>%s</p></div>',
+				esc_html(
+					__( 'The update-card link was not sent. WordPress refused the message, or the subscription has no usable recipient — check the customer’s email field on the entry.', 'chip-for-gravity-forms' )
+				)
+			);
+
+			return;
+		}
 
 		if ( $sent <= 0 ) {
 			return;

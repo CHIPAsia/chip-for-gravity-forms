@@ -41,6 +41,41 @@ class GF_Chip_Renewals {
 	const RETRY_OFFSETS_DAYS = array( 1, 3, 5 );
 
 	/**
+	 * The entry is not a subscription at all, so a renewal is meaningless.
+	 *
+	 * @var string
+	 */
+	const BLOCKED_NOT_SUBSCRIPTION = 'not_subscription';
+
+	/**
+	 * The subscription is cancelled, expired or pending, so it is not charged.
+	 *
+	 * @var string
+	 */
+	const BLOCKED_STATE = 'state';
+
+	/**
+	 * No card token is stored, so there is nothing to charge.
+	 *
+	 * @var string
+	 */
+	const BLOCKED_NO_TOKEN = 'no_token';
+
+	/**
+	 * The subscription has no next-payment date, so nothing is scheduled.
+	 *
+	 * @var string
+	 */
+	const BLOCKED_NO_SCHEDULE = 'no_schedule';
+
+	/**
+	 * The next payment is in the future: the charge is simply not due yet.
+	 *
+	 * @var string
+	 */
+	const BLOCKED_NOT_YET_DUE = 'not_yet_due';
+
+	/**
 	 * Maximum charges attempted for one subscription inside the window.
 	 *
 	 * Visa and Mastercard cap retries per card per 30 days and levy penalty
@@ -137,10 +172,32 @@ class GF_Chip_Renewals {
 	 * @return bool
 	 */
 	public static function is_due( $entry, $now, $force = false ) {
+		return null === self::blocking_reason( $entry, $now, $force );
+	}
+
+	/**
+	 * The single thing that stops this subscription being charged, if any.
+	 *
+	 * "Not due" is four different situations wearing one label, and an
+	 * operator cannot act on the label: an invoice due tomorrow needs nothing,
+	 * a subscription with no stored card needs a card-update link, and one
+	 * still in its trial needs the date to arrive. Returning the reason lets
+	 * the UI say which, instead of making the operator guess between them.
+	 *
+	 * The order matters. It is the order the charge path itself refuses in, so
+	 * the reason reported is the reason that would actually stop the charge —
+	 * reporting a later condition would name a cause that is not the cause.
+	 *
+	 * @param array  $entry Entry array with chip_sub_* meta flattened in.
+	 * @param string $now   Current UTC time, 'Y-m-d H:i:s'.
+	 * @param bool   $force Operator override, as in is_due().
+	 * @return string|null One of the BLOCKED_* constants, or null when chargeable.
+	 */
+	public static function blocking_reason( $entry, $now, $force = false ) {
 		// A one-time payment is not a subscription. Checked explicitly rather
 		// than relying on chip_sub_status, which a stray meta write could set.
 		if ( ! GF_Chip::is_subscription_entry( $entry ) ) {
-			return false;
+			return self::BLOCKED_NOT_SUBSCRIPTION;
 		}
 
 		// Only an active subscription is charged by the cron. Cancelled,
@@ -154,23 +211,27 @@ class GF_Chip_Renewals {
 		$state = GF_Chip::get_subscription_state( $entry );
 
 		if ( 'active' !== $state && ! ( $force && 'on-hold' === $state ) ) {
-			return false;
+			return self::BLOCKED_STATE;
 		}
 
-		// Without a token there is nothing to charge. Treating this as "not
-		// due" rather than charging and failing keeps the loop from spinning;
-		// the missing token was already surfaced when it was first noticed.
+		// Without a token there is nothing to charge. Reported distinctly
+		// because it is the one reason an operator can FIX from this screen,
+		// by sending a card-update link.
 		if ( empty( $entry['chip_recurring_token'] ) ) {
-			return false;
+			return self::BLOCKED_NO_TOKEN;
 		}
 
 		$next = rgar( $entry, 'chip_sub_next_payment' );
 
 		if ( empty( $next ) ) {
-			return false;
+			return self::BLOCKED_NO_SCHEDULE;
 		}
 
-		return self::compare_datetime( $next, $now ) <= 0;
+		if ( self::compare_datetime( $next, $now ) > 0 ) {
+			return self::BLOCKED_NOT_YET_DUE;
+		}
+
+		return null;
 	}
 
 	/**

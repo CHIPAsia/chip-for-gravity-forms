@@ -176,8 +176,131 @@ class GF_Chip_RenewalsTest extends TestCase {
 	// ---------------------------------------------------------------------
 
 	/**
-	 * Comparison is a plain string compare on normalised UTC values.
+	 * "Not due" is several unrelated situations, so each one is named.
+	 *
+	 * The old wording listed two possibilities and left the operator to work
+	 * out which applied. These tests pin the reason itself, because the reason
+	 * is what the notice now shows.
 	 */
+	public function test_reason_is_null_for_a_chargeable_subscription(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-09-01 00:00:00' ) );
+
+		$this->assertNull( GF_Chip_Renewals::blocking_reason( $entry, '2026-09-02 00:00:00', true ) );
+	}
+
+	public function test_reason_for_a_future_payment_is_not_yet_due(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-10-01 00:00:00' ) );
+
+		$this->assertSame(
+			GF_Chip_Renewals::BLOCKED_NOT_YET_DUE,
+			GF_Chip_Renewals::blocking_reason( $entry, '2026-09-25 00:00:00', true )
+		);
+	}
+
+	public function test_reason_for_a_missing_token_is_the_token_not_the_date(): void {
+		// The date is in the FUTURE as well, so a classifier that reported the
+		// first condition it happened to test would name the wrong one.
+		$entry = $this->due_subscription(
+			array(
+				'chip_sub_next_payment' => '2026-10-01 00:00:00',
+				'chip_recurring_token'  => '',
+			)
+		);
+
+		$this->assertSame(
+			GF_Chip_Renewals::BLOCKED_NO_TOKEN,
+			GF_Chip_Renewals::blocking_reason( $entry, '2026-09-25 00:00:00', true )
+		);
+	}
+
+	public function test_reason_for_a_cancelled_subscription_is_the_state(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_status' => 'cancelled' ) );
+
+		$this->assertSame(
+			GF_Chip_Renewals::BLOCKED_STATE,
+			GF_Chip_Renewals::blocking_reason( $entry, '2026-09-25 00:00:00', true )
+		);
+	}
+
+	public function test_reason_for_a_missing_schedule_is_the_schedule(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_next_payment' => '' ) );
+
+		$this->assertSame(
+			GF_Chip_Renewals::BLOCKED_NO_SCHEDULE,
+			GF_Chip_Renewals::blocking_reason( $entry, '2026-09-25 00:00:00', true )
+		);
+	}
+
+	public function test_reason_for_a_one_time_payment_is_not_a_subscription(): void {
+		$entry = $this->due_subscription( array( 'transaction_type' => '1' ) );
+
+		$this->assertSame(
+			GF_Chip_Renewals::BLOCKED_NOT_SUBSCRIPTION,
+			GF_Chip_Renewals::blocking_reason( $entry, '2026-09-25 00:00:00', true )
+		);
+	}
+
+	/**
+	 * Every distinct reason must have its own message.
+	 *
+	 * A switch that fell through to the default would still render something,
+	 * so asserting "a message exists" proves nothing. This asserts the
+	 * messages DIFFER, which is what the operator actually needs.
+	 */
+	public function test_every_reason_gets_a_distinct_message(): void {
+		$reasons = array(
+			GF_Chip_Renewals::BLOCKED_NOT_YET_DUE,
+			GF_Chip_Renewals::BLOCKED_NO_TOKEN,
+			GF_Chip_Renewals::BLOCKED_NO_SCHEDULE,
+			GF_Chip_Renewals::BLOCKED_STATE,
+			GF_Chip_Renewals::BLOCKED_NOT_SUBSCRIPTION,
+		);
+
+		$seen = array();
+
+		foreach ( $reasons as $reason ) {
+			$method = new \ReflectionMethod( 'GF_Chip_Subscriptions_Page', 'skipped_message' );
+			$method->setAccessible( true );
+			$message = $method->invoke( null, $reason, 93 );
+
+			$this->assertIsString( $message );
+			$this->assertNotSame( '', $message );
+			$this->assertArrayNotHasKey( $message, $seen, "two reasons produced the same message: {$message}" );
+			$seen[ $message ] = $reason;
+		}
+
+		$this->assertCount( count( $reasons ), $seen );
+	}
+
+	/**
+	 * The one reason an operator can FIX from this screen must say so.
+	 *
+	 * "No stored card" is actionable: send a link. If the wording stops
+	 * naming that, the operator is back to guessing.
+	 */
+	public function test_the_missing_card_message_names_the_fix(): void {
+		$method = new \ReflectionMethod( 'GF_Chip_Subscriptions_Page', 'skipped_message' );
+		$method->setAccessible( true );
+
+		$message = $method->invoke( null, GF_Chip_Renewals::BLOCKED_NO_TOKEN, 93 );
+
+		$this->assertStringContainsString( 'update-card link', $message );
+	}
+
+	/**
+	 * And the "not yet due" message must not claim a card is missing.
+	 *
+	 * That confusion is exactly what the old single message caused.
+	 */
+	public function test_the_not_yet_due_message_does_not_mention_a_card(): void {
+		$method = new \ReflectionMethod( 'GF_Chip_Subscriptions_Page', 'skipped_message' );
+		$method->setAccessible( true );
+
+		$message = $method->invoke( null, GF_Chip_Renewals::BLOCKED_NOT_YET_DUE, 93 );
+
+		$this->assertStringNotContainsString( 'card', $message );
+	}
+
 	public function test_compare_datetime_orders_correctly(): void {
 		$this->assertLessThan( 0, GF_Chip_Renewals::compare_datetime( '2026-09-01 00:00:00', '2026-09-02 00:00:00' ) );
 		$this->assertGreaterThan( 0, GF_Chip_Renewals::compare_datetime( '2026-09-03 00:00:00', '2026-09-02 00:00:00' ) );
