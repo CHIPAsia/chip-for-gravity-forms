@@ -134,6 +134,8 @@ class GF_Chip extends GFPaymentAddOn {
 		add_action( 'wp', array( 'GF_Chip_Card_Update_Page', 'maybe_handle' ), 4 );
 		add_action( 'admin_post_chip_send_card_update', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_send' ) );
 		add_action( 'admin_post_chip_retry_renewal', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_retry' ) );
+		add_action( 'admin_post_chip_charge_now', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_charge_now' ) );
+		add_action( 'admin_post_chip_charge_now_confirm', array( 'GF_Chip_Renewal_Notifications', 'handle_admin_charge_now_confirm' ) );
 		GF_Chip_Renewal_Notifications::register();
 		add_action( 'wp_ajax_gf_chip_refund_payment', array( $this, 'chip_refund_payment' ), 10, 0 );
 		add_action( 'wp_ajax_gf_chip_get_global_credentials', array( $this, 'ajax_get_global_credentials' ), 10, 0 );
@@ -2102,9 +2104,12 @@ class GF_Chip extends GFPaymentAddOn {
 	 *                     on-hold. Set only by the operator-initiated retry;
 	 *                     the cron must never set it, or every run would
 	 *                     bypass the dunning ladder.
+	 * @param bool  $any_time Charge before the scheduled date. Only an
+	 *                        operator-confirmed "Charge now" sets this. The
+	 *                        cycle is neither advanced nor consumed.
 	 * @return array Result with a status of charged|failed|skipped|expired.
 	 */
-	public function charge_renewal( $entry, $force = false ) {
+	public function charge_renewal( $entry, $force = false, $any_time = false ) {
 		$entry_id = rgar( $entry, 'id' );
 
 		$form = GFAPI::get_form( rgar( $entry, 'form_id' ) );
@@ -2136,7 +2141,8 @@ class GF_Chip extends GFPaymentAddOn {
 			$length > 0 ? $length : 1,
 			$unit,
 			$remaining,
-			$force
+			$force,
+			$any_time
 		);
 
 		if ( 'charge' !== $plan['action'] ) {
@@ -2231,7 +2237,7 @@ class GF_Chip extends GFPaymentAddOn {
 			$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
 			// Nothing was created, so there is no purchase id to report: the
 			// failure is the create response itself.
-			return $this->handle_renewal_failure( $entry, $feed, '', $purchase, $plan );
+			return $this->handle_renewal_failure( $entry, $feed, '', $purchase, $plan, $any_time );
 		}
 
 		$renewal_purchase_id = (string) $purchase['id'];
@@ -2242,7 +2248,7 @@ class GF_Chip extends GFPaymentAddOn {
 		$GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
 
 		if ( ! is_array( $result ) || empty( $result['id'] ) ) {
-			return $this->handle_renewal_failure( $entry, $feed, $renewal_purchase_id, $result, $plan );
+			return $this->handle_renewal_failure( $entry, $feed, $renewal_purchase_id, $result, $plan, $any_time );
 		}
 
 		$status = isset( $result['status'] ) ? (string) $result['status'] : '';
@@ -2282,6 +2288,37 @@ class GF_Chip extends GFPaymentAddOn {
 		// expire rather than schedule another cycle.
 		gform_update_meta( $entry_id, 'chip_sub_retry_count', 0, $form_id );
 		gform_update_meta( $entry_id, 'chip_sub_last_payment', gmdate( 'Y-m-d H:i:s' ), $form_id );
+
+		// An early charge claims no date because the schedule did not move --
+		// NOT because the plan ran out. Reading null as "final instalment"
+		// here would expire a healthy subscription the moment an operator
+		// collected early, so the early path returns before that check.
+		if ( $any_time ) {
+			$this->add_note(
+				$entry_id,
+				sprintf(
+					/* translators: %s: the still-scheduled next payment date. */
+					esc_html__( 'Early charge collected. The scheduled cycle is unchanged; next payment remains %s.', 'chip-for-gravity-forms' ),
+					(string) rgar( $entry, 'chip_sub_next_payment' )
+				),
+				'success'
+			);
+
+			$this->post_payment_action(
+				$entry,
+				array(
+					'type'           => GF_Chip_Renewal_Notifications::EVENT_RENEWED,
+					'amount'         => isset( $result['purchase']['total'] ) ? (int) $result['purchase']['total'] : 0,
+					'transaction_id' => $renewal_purchase_id,
+					'payment_status' => 'Paid',
+				)
+			);
+
+			return array(
+				'status' => 'charged',
+				'note'   => '',
+			);
+		}
 
 		if ( null === $plan['claim'] ) {
 			gform_update_meta( $entry_id, 'chip_sub_status', 'expired', $form_id );
@@ -2381,11 +2418,38 @@ class GF_Chip extends GFPaymentAddOn {
 	 * @param string $purchase CHIP purchase id.
 	 * @param mixed  $result   Failed charge response.
 	 * @param array  $plan     Plan produced by the renewal engine.
+	 * @param bool   $early    True for an operator's early charge, whose
+	 *                         failure must leave the schedule untouched.
 	 * @return array Result with a failed status.
 	 */
-	private function handle_renewal_failure( $entry, $feed, $purchase, $result, $plan ) {
+	private function handle_renewal_failure( $entry, $feed, $purchase, $result, $plan, $early = false ) {
 		$entry_id = rgar( $entry, 'id' );
 		$form_id  = rgar( $entry, 'form_id' );
+
+		// An early charge that fails must leave NO trace on the schedule.
+		//
+		// The scheduled cycle has not happened yet, so this failure is not a
+		// missed payment: the customer is not in arrears, the dunning ladder
+		// has not started, and the subscription must not be expired by a
+		// collection the customer never owed on that date. Counting it would
+		// burn a ladder slot and could expire a healthy subscription because
+		// an operator tried to collect early.
+		if ( $early ) {
+			$this->add_note(
+				$entry_id,
+				sprintf(
+					/* translators: %s: API response. */
+					esc_html__( 'Early charge (brought forward by an operator) failed. The scheduled cycle is unaffected. Response: %s', 'chip-for-gravity-forms' ),
+					wp_json_encode( $result )
+				),
+				'error'
+			);
+
+			return array(
+				'status' => 'failed',
+				'note'   => '',
+			);
+		}
 
 		$retry_count = (int) gform_get_meta( $entry_id, 'chip_sub_retry_count' );
 		++$retry_count;

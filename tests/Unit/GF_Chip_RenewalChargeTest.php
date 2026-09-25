@@ -286,6 +286,145 @@ class GF_Chip_RenewalChargeTest extends TestCase {
 	}
 
 	// -----------------------------------------------------------------
+	// Early charge (operator-initiated, before the scheduled date).
+	// -----------------------------------------------------------------
+
+	/**
+	 * An early charge that FAILS must leave the subscription untouched.
+	 *
+	 * The scheduled cycle has not happened, so this is not a missed payment:
+	 * nothing is in arrears, no dunning slot may be used, and the subscription
+	 * must not be put on hold or expired by a collection the customer never
+	 * owed on that date.
+	 *
+	 * Asserted on the stored state, because that is what a later cron run acts
+	 * on — a note saying "unaffected" would not stop the cron from dunning the
+	 * customer an hour later.
+	 */
+	public function test_a_failed_early_charge_leaves_the_subscription_untouched(): void {
+		$entry_id = 91;
+
+		$future = gmdate( 'Y-m-d H:i:s', time() + 86400 * 7 );
+		$this->stage_scheduled_subscription( $entry_id, $future );
+
+		// A refusal from the gateway: the response carries no purchase id,
+		// which is the condition the charge path treats as a failure.
+		WP_Mock::userFunction( 'wp_remote_request' )->andReturn(
+			array( 'body' => wp_json_encode( array( 'error' => 'card_declined' ) ) )
+		);
+		WP_Mock::userFunction( 'wp_remote_retrieve_body' )->andReturnUsing(
+			function ( $r ) {
+				return is_array( $r ) && isset( $r['body'] ) ? $r['body'] : '';
+			}
+		);
+		WP_Mock::userFunction( 'wp_remote_retrieve_response_code' )->andReturn( 400 );
+		WP_Mock::userFunction( 'apply_filters' )->andReturnUsing(
+			function ( $tag, $value ) {
+				return $value;
+			}
+		);
+		WP_Mock::userFunction( 'get_option' )->andReturn( array() );
+		WP_Mock::userFunction( 'wp_timezone_string' )->andReturn( 'Asia/Kuala_Lumpur' );
+		WP_Mock::userFunction( 'home_url' )->andReturn( 'https://example.com/' );
+		WP_Mock::userFunction( 'absint' )->andReturnUsing(
+			function ( $v ) {
+				return abs( (int) $v );
+			}
+		);
+
+		$addon = $this->make_addon();
+		$entry = $this->entry( $entry_id );
+
+		$result = $addon->charge_renewal( $entry, false, true );
+
+		$this->assertSame( 'failed', rgar( $result, 'status' ) );
+
+		$this->assertSame(
+			0,
+			(int) gform_get_meta( $entry_id, 'chip_sub_retry_count' ),
+			'a failed early charge must not consume a dunning slot'
+		);
+
+		$this->assertSame(
+			$future,
+			(string) gform_get_meta( $entry_id, 'chip_sub_next_payment' ),
+			'the scheduled date must not move'
+		);
+
+		$this->assertSame(
+			'active',
+			(string) gform_get_meta( $entry_id, 'chip_sub_status' ),
+			'a failed early charge must not put a healthy subscription on hold'
+		);
+
+		$this->assertSame(
+			'3',
+			(string) gform_get_meta( $entry_id, 'chip_sub_remaining' ),
+			'a failed early charge must not consume an installment'
+		);
+	}
+
+	/**
+	 * And an early charge that SUCCEEDS must not expire the subscription.
+	 *
+	 * An early charge claims no date because the schedule did not move, which
+	 * is indistinguishable from "final instalment" by the claim alone. Reading
+	 * it the wrong way expires the subscription the moment an operator
+	 * collects early — ending it after one payment.
+	 */
+	public function test_a_successful_early_charge_does_not_expire_the_subscription(): void {
+		$entry_id = 92;
+
+		$future = gmdate( 'Y-m-d H:i:s', time() + 86400 * 7 );
+		$this->stage_scheduled_subscription( $entry_id, $future );
+		$this->mock_transport();
+
+		$addon  = $this->make_addon();
+		$result = $addon->charge_renewal( $this->entry( $entry_id ), false, true );
+
+		$this->assertSame( 'charged', rgar( $result, 'status' ) );
+
+		$this->assertSame(
+			'active',
+			(string) gform_get_meta( $entry_id, 'chip_sub_status' ),
+			'an early charge must not expire a healthy subscription'
+		);
+
+		$this->assertSame(
+			$future,
+			(string) gform_get_meta( $entry_id, 'chip_sub_next_payment' ),
+			'the scheduled cycle must still run'
+		);
+
+		$this->assertSame(
+			'3',
+			(string) gform_get_meta( $entry_id, 'chip_sub_remaining' ),
+			'an early charge is an extra collection, not one of the installments'
+		);
+	}
+
+	/**
+	 * The early path must still actually charge.
+	 *
+	 * Otherwise every assertion above would pass on code that silently
+	 * refuses, which would be a worse bug than the one being fixed.
+	 */
+	public function test_an_early_charge_still_creates_a_purchase_and_charges_it(): void {
+		$entry_id = 93;
+
+		$this->stage_scheduled_subscription( $entry_id, gmdate( 'Y-m-d H:i:s', time() + 86400 * 7 ) );
+		$this->mock_transport();
+
+		$addon = $this->make_addon();
+		$addon->charge_renewal( $this->entry( $entry_id ), false, true );
+
+		$charge_urls = $this->urls_matching( '/charge/' );
+
+		$this->assertCount( 1, $charge_urls, 'an early charge must reach the gateway' );
+		$this->assertStringContainsString( 'pay_new', $charge_urls[0] );
+	}
+
+	// -----------------------------------------------------------------
 	// Helpers.
 	// -----------------------------------------------------------------
 
@@ -344,6 +483,22 @@ class GF_Chip_RenewalChargeTest extends TestCase {
 				'currency'         => 'MYR',
 			)
 		);
+	}
+
+	/**
+	 * Stages a subscription whose NEXT payment is still in the future.
+	 *
+	 * This is the state "Charge now" exists for, and it differs from a due
+	 * subscription in meta rather than only in the entry array — which is what
+	 * the hydrating handler reads.
+	 *
+	 * @param int    $entry_id Entry id.
+	 * @param string $future   The scheduled date, UTC.
+	 * @return void
+	 */
+	private function stage_scheduled_subscription( $entry_id, $future ) {
+		$this->stage_due_subscription( $entry_id );
+		gform_update_meta( $entry_id, 'chip_sub_next_payment', $future );
 	}
 
 	/**

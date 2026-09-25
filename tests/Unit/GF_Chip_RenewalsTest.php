@@ -301,6 +301,96 @@ class GF_Chip_RenewalsTest extends TestCase {
 		$this->assertStringNotContainsString( 'card', $message );
 	}
 
+	/**
+	 * An early charge must not consume a scheduling slot.
+	 *
+	 * This is the whole safety argument for the feature. The scheduled cycle
+	 * has not happened yet, so bringing a payment forward must leave
+	 * chip_sub_next_payment exactly where it was — otherwise the customer's
+	 * billing day drifts, and a finite plan loses an installment.
+	 */
+	public function test_early_charge_claims_no_date(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-10-01 00:00:00' ) );
+
+		$plan = GF_Chip_Renewals::plan_renewal( $entry, '2026-09-25 00:00:00', 1, 'month', 12, false, true );
+
+		$this->assertSame( 'charge', $plan['action'] );
+		$this->assertNull( $plan['claim'], 'an early charge must not move the schedule' );
+		$this->assertSame( 12, $plan['remaining'], 'an early charge must not consume an installment' );
+	}
+
+	/**
+	 * And the scheduled cycle still runs afterwards.
+	 *
+	 * A null claim from an ORDINARY renewal means "final instalment, expire
+	 * now". The early path must therefore be distinguishable from it, which is
+	 * exactly the bug this guards: reading the wrong kind of null would expire
+	 * a healthy subscription the moment an operator collected early.
+	 */
+	public function test_ordinary_renewal_still_claims_a_date(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-09-01 00:00:00' ) );
+
+		$plan = GF_Chip_Renewals::plan_renewal( $entry, '2026-09-02 00:00:00', 1, 'month', 12, true, false );
+
+		$this->assertSame( 'charge', $plan['action'] );
+		$this->assertNotNull( $plan['claim'], 'a normal renewal must still advance the schedule' );
+		$this->assertSame( 11, $plan['remaining'] );
+	}
+
+	/**
+	 * "Charge now" is only offered when the calendar is the ONLY obstacle.
+	 *
+	 * A cancelled subscription, or one with no stored card, is not "not due
+	 * yet" — it is not chargeable at all, and must never get the button.
+	 */
+	public function test_charge_now_is_offered_only_for_a_future_date(): void {
+		$future   = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-10-01 00:00:00' ) );
+		$past     = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-09-01 00:00:00' ) );
+		$cancel   = $this->due_subscription( array( 'chip_sub_status' => 'cancelled', 'chip_sub_next_payment' => '2026-10-01 00:00:00' ) );
+		$no_token = $this->due_subscription( array( 'chip_recurring_token' => '', 'chip_sub_next_payment' => '2026-10-01 00:00:00' ) );
+
+		$now = '2026-09-25 00:00:00';
+
+		$this->assertTrue( \GF_Chip_Subscriptions_Page::can_charge_now( $future, $now ) );
+		$this->assertFalse( \GF_Chip_Subscriptions_Page::can_charge_now( $past, $now ), 'an already-due subscription uses Retry, not Charge now' );
+		$this->assertFalse( \GF_Chip_Subscriptions_Page::can_charge_now( $cancel, $now ), 'a cancelled subscription is not chargeable at all' );
+		$this->assertFalse( \GF_Chip_Subscriptions_Page::can_charge_now( $no_token, $now ), 'no card means no charge' );
+	}
+
+	/**
+	 * An early charge needs no cron permission either.
+	 *
+	 * $any_time must never reach the cron: the due-query still filters on a
+	 * past chip_sub_next_payment, and is_due() without it is unchanged.
+	 */
+	public function test_any_time_is_not_the_default_for_the_cron(): void {
+		$entry = $this->due_subscription( array( 'chip_sub_next_payment' => '2026-10-01 00:00:00' ) );
+
+		$this->assertFalse(
+			GF_Chip_Renewals::is_due( $entry, '2026-09-25 00:00:00' ),
+			'the cron must never charge a subscription that is not due'
+		);
+		$this->assertTrue( GF_Chip_Renewals::is_due( $entry, '2026-09-25 00:00:00', false, true ) );
+	}
+
+	/**
+	 * And the cron query has no early-charge escape hatch.
+	 */
+	public function test_cron_query_does_not_pass_any_time(): void {
+		$source = file_get_contents( __DIR__ . '/../../includes/class-gf-chip.php' );
+
+		$this->assertStringNotContainsString(
+			'is_due( $entry, gmdate( \'Y-m-d H:i:s\' ), false, true )',
+			$source,
+			'the due-query must not charge early'
+		);
+		$this->assertStringContainsString(
+			'GF_Chip_Renewals::is_due( $entry, gmdate( \'Y-m-d H:i:s\' ) )',
+			$source,
+			'the cron must use the plain due check'
+		);
+	}
+
 	public function test_compare_datetime_orders_correctly(): void {
 		$this->assertLessThan( 0, GF_Chip_Renewals::compare_datetime( '2026-09-01 00:00:00', '2026-09-02 00:00:00' ) );
 		$this->assertGreaterThan( 0, GF_Chip_Renewals::compare_datetime( '2026-09-03 00:00:00', '2026-09-02 00:00:00' ) );
