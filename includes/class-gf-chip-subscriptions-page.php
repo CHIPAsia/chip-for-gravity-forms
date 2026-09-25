@@ -43,6 +43,13 @@ class GF_Chip_Subscriptions_Page {
 	}
 
 	/**
+	 * The list table for this screen, built once per request.
+	 *
+	 * @var GF_Chip_Subscriptions_Table|null
+	 */
+	private static $table = null;
+
+	/**
 	 * Capability required for the actions on this screen.
 	 *
 	 * Single source of truth for both the page and its handlers, so a button
@@ -85,12 +92,88 @@ class GF_Chip_Subscriptions_Page {
 		add_filter( 'gform_addon_navigation', array( __CLASS__, 'add_nav_item' ) );
 		add_filter( 'set-screen-option', array( __CLASS__, 'save_screen_option' ), 10, 3 );
 
-		// The screen is not resolved until the page's own load action, so the
-		// screen option is registered there rather than inline. The bulk
-		// handler runs there too: it fires after the screen exists and before
-		// any output, which is what lets it redirect.
+		// The screen is not resolved until the page's own load action, so
+		// everything that needs it is registered there rather than inline.
+		//
+		// `load-{hook}` is also the last moment before the admin header is
+		// printed, and that ordering is load-bearing: Screen Options renders
+		// its column toggles from get_column_headers(), which caches the
+		// first lookup for the screen. A WP_List_Table registers the filter
+		// that supplies those headers from its CONSTRUCTOR, so a table built
+		// inside the page callback is built too late: the cache has already
+		// been filled with an empty array by the time the header renders, and
+		// the columns panel comes out blank with no error.
+		//
+		// Building the table here — as core's own list screens do, e.g.
+		// wp-admin/edit.php — is what makes the toggles appear.
 		add_action( 'load-' . self::screen_id(), array( __CLASS__, 'register_screen_option' ) );
 		add_action( 'load-' . self::screen_id(), array( __CLASS__, 'maybe_handle_bulk_action' ) );
+		add_action( 'load-' . self::screen_id(), array( __CLASS__, 'init_table' ) );
+	}
+
+	/**
+	 * Builds the list table before the admin header renders.
+	 *
+	 * Also prepares it here, so the same prepared table is both displayed and
+	 * known to the column-header filter.
+	 *
+	 * @return void
+	 */
+	public static function init_table() {
+		$table = new GF_Chip_Subscriptions_Table(
+			self::per_page(),
+			self::current_status(),
+			self::current_search(),
+			gmdate( 'Y-m-d H:i:s' )
+		);
+
+		$table->prepare_items();
+
+		self::$table = $table;
+	}
+
+	/**
+	 * The status filter for this request, clamped to the known vocabulary.
+	 *
+	 * @return string
+	 */
+	public static function current_status() {
+		// Read-only list filter: it selects what is displayed and mutates
+		// nothing, so a nonce is not applicable.
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$status = isset( $_GET['chip_status'] ) ? sanitize_key( wp_unslash( $_GET['chip_status'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		if ( '' !== $status && ! in_array( $status, \GF_Chip::SUBSCRIPTION_STATES, true ) ) {
+			$status = '';
+		}
+
+		return $status;
+	}
+
+	/**
+	 * The search term for this request.
+	 *
+	 * @return string
+	 */
+	public static function current_search() {
+		// Read-only list filter: see current_status().
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		return isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+	}
+
+	/**
+	 * The prepared list table, built in init_table().
+	 *
+	 * @return GF_Chip_Subscriptions_Table
+	 */
+	public static function table() {
+		if ( ! self::$table instanceof GF_Chip_Subscriptions_Table ) {
+			self::init_table();
+		}
+
+		return self::$table;
 	}
 
 	/**
@@ -877,30 +960,9 @@ class GF_Chip_Subscriptions_Page {
 			wp_die( esc_html__( 'Access denied.', 'chip-for-gravity-forms' ) );
 		}
 
-		// Read-only list filters: they select what is displayed and mutate
-		// nothing, so a nonce is not applicable. Each is sanitised, and the
-		// status is additionally clamped to the known vocabulary below.
-		// phpcs:disable WordPress.Security.NonceVerification.Recommended
-		$status = isset( $_GET['chip_status'] ) ? sanitize_key( wp_unslash( $_GET['chip_status'] ) ) : '';
-		$search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
-		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-
-		// Clamp the status filter to the known vocabulary so an arbitrary
-		// value cannot be passed into the query.
-		if ( '' !== $status && ! in_array( $status, \GF_Chip::SUBSCRIPTION_STATES, true ) ) {
-			$status = '';
-		}
-
-		$table = new GF_Chip_Subscriptions_Table(
-			self::per_page(),
-			$status,
-			$search,
-			gmdate( 'Y-m-d H:i:s' )
-		);
-
-		$table->prepare_items();
-
-		self::render_page( $table, $status );
+		// Built on load-{hook}, before the admin header rendered the column
+		// preferences this table supplies. See register().
+		self::render_page( self::table(), self::table()->status() );
 	}
 
 	/**

@@ -213,6 +213,22 @@ if ( ! class_exists( 'GF_Chip_Test_Meta' ) ) {
 		}
 
 		/**
+		 * Returns a single value — the count queries use this.
+		 *
+		 * A stub without it makes any code path that counts rows untestable,
+		 * which is how a hidden-column bug survived the suite: the test could
+		 * not get past prepare_items() to reach the header cache at all.
+		 *
+		 * @param string $query The SQL.
+		 * @return int
+		 */
+		public function get_var( $query = '' ) {
+			self::$queries[] = $query;
+
+			return 0;
+		}
+
+		/**
 		 * Returns a column of results. Only the due-list query is served.
 		 *
 		 * @param string $query The SQL.
@@ -1194,6 +1210,34 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
 		 */
 		protected function get_views() {
 			return array();
+		}
+
+		/**
+		 * The column that carries the row title.
+		 *
+		 * Reproduces core's resolution closely enough for the subclass under
+		 * test: the declared primary if it exists, otherwise the first
+		 * non-checkbox column. A stub returning a constant would hide the bug
+		 * where a subclass hardcodes the name and a rename breaks it.
+		 *
+		 * @return string
+		 */
+		protected function get_primary_column_name() {
+			$columns = $this->get_columns();
+			$default = method_exists( $this, 'get_default_primary_column_name' )
+				? $this->get_default_primary_column_name()
+				: '';
+
+			if ( ! isset( $columns[ $default ] ) ) {
+				foreach ( array_keys( $columns ) as $name ) {
+					if ( 'cb' !== $name ) {
+						$default = $name;
+						break;
+					}
+				}
+			}
+
+			return $default;
 		}
 
 		/**

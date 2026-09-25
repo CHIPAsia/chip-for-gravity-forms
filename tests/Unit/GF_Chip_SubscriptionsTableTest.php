@@ -700,6 +700,152 @@ class GF_Chip_SubscriptionsTableTest extends TestCase {
 	}
 
 	/**
+	 * The table must be built before the admin header renders.
+	 *
+	 * Screen Options draws its column toggles from get_column_headers(), which
+	 * caches the first lookup for the screen. A WP_List_Table supplies those
+	 * headers through a filter it registers in its CONSTRUCTOR.
+	 *
+	 * Build the table in the page callback instead and the cache is already
+	 * filled with an empty array by the time the header renders, so the
+	 * columns panel is silently blank — no warning, no error, just a Screen
+	 * Options box with nothing in it.
+	 *
+	 * The ordering is what makes the toggles appear, so the ordering is what
+	 * is asserted: the constructor must run on `load-{hook}`, which admin.php
+	 * fires before it requires the admin header.
+	 */
+	public function test_the_table_is_built_on_load_before_the_admin_header() {
+		WP_Mock::expectActionAdded(
+			'load-' . GF_Chip_Subscriptions_Page::screen_id(),
+			array( GF_Chip_Subscriptions_Page::class, 'init_table' )
+		);
+
+		GF_Chip_Subscriptions_Page::register();
+
+		$this->assertTrue( true, 'init_table must be registered on load-{hook}' );
+	}
+
+	/**
+	 * And the page must render the table that was built early — not build a
+	 * second one, which would be too late for the header it already missed.
+	 */
+	public function test_the_page_renders_the_table_it_built_early() {
+		$page = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php' );
+
+		$this->assertStringContainsString(
+			'self::render_page( self::table(), self::table()->status() );',
+			$page,
+			'render() must consume the early table, not construct another'
+		);
+
+		// One construction site only: the one on load-{hook}.
+		$this->assertSame(
+			1,
+			substr_count( $page, 'new GF_Chip_Subscriptions_Table(' ),
+			'the table must be constructed in exactly one place'
+		);
+	}
+
+	/**
+	 * The status the page renders with comes from the table, so the table must
+	 * expose it. Clamping lives with the parser, not with the renderer.
+	 */
+	public function test_the_table_exposes_the_status_it_was_built_with() {
+		$table = new GF_Chip_Subscriptions_Table( 20, 'active', '', gmdate( 'Y-m-d H:i:s' ) );
+
+		$this->assertSame( 'active', $table->status() );
+	}
+
+	/**
+	 * Hidden columns must come from the user's Screen Options.
+	 *
+	 * prepare_items() sets _column_headers, and that property is the cache
+	 * get_column_info() returns. The original line passed a literal empty array
+	 * for the hidden set, so the toggle wrote the preference and the very next
+	 * render threw it away — the column could never actually be hidden, with
+	 * nothing in the log to show it.
+	 */
+	public function test_hidden_columns_come_from_the_screen_not_a_literal() {
+		WP_Mock::userFunction( 'get_hidden_columns' )->andReturn( array( 'token', 'retries' ) );
+
+		$headers = $this->prepared_column_headers();
+
+		$this->assertSame(
+			array( 'token', 'retries' ),
+			$headers[1],
+			'the hidden set must be the user preference'
+		);
+
+		// And the column set itself must stay complete: hiding is a display
+		// concern, so it can never remove a column from the table.
+		$this->assertArrayHasKey( 'token', $headers[0] );
+		$this->assertArrayHasKey( 'retries', $headers[0] );
+	}
+
+	/**
+	 * The primary column must be resolved, not hardcoded to 'entry'.
+	 *
+	 * A hardcoded name keeps working until a column is renamed, and then the
+	 * row-title class silently lands on nothing.
+	 */
+	public function test_the_primary_column_is_resolved_not_hardcoded() {
+		WP_Mock::userFunction( 'get_hidden_columns' )->andReturn( array() );
+
+		$headers = $this->prepared_column_headers();
+
+		$this->assertNotEmpty( $headers[3], 'the primary column must be resolved' );
+		$this->assertContains(
+			$headers[3],
+			array_keys( $headers[0] ),
+			'the primary column must be one of the declared columns'
+		);
+
+		// The value alone cannot prove this: 'entry' happens to be correct
+		// today, so a hardcoded 'entry' passes the assertions above. What must
+		// hold is that the name is RESOLVED — otherwise renaming the column
+		// silently drops the row-title class and the row actions with it.
+		$source = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-table.php' );
+
+		$this->assertStringContainsString(
+			'$this->get_primary_column_name(),',
+			$source,
+			'the primary column must be resolved, not named literally'
+		);
+
+		$this->assertStringNotContainsString(
+			"'entry' );",
+			$source,
+			'no literal column tuple may be passed as _column_headers'
+		);
+	}
+
+	/**
+	 * Runs prepare_items() with the row query stubbed out, then reads back the
+	 * column headers it cached.
+	 *
+	 * The row query needs a database the unit harness does not have; it is
+	 * irrelevant in both cases above, where only the header cache is under
+	 * test.
+	 *
+	 * @return array
+	 */
+	private function prepared_column_headers() {
+		\GF_Chip_Test_WPDB::reset();
+		\GF_Chip_Test_WPDB::set_due_ids( array() );
+		$GLOBALS['wpdb'] = new \GF_Chip_Test_WPDB();
+
+		$table = new GF_Chip_Subscriptions_Table( 20, '', '', gmdate( 'Y-m-d H:i:s' ) );
+		$table->prepare_items();
+
+		$ref  = new \ReflectionClass( $table );
+		$prop = $ref->getProperty( '_column_headers' );
+		$prop->setAccessible( true );
+
+		return $prop->getValue( $table );
+	}
+
+	/**
 	 * The views answer "how many are on hold", so each state gets a view and
 	 * the current one is marked — the same `subsubsub` markup core uses.
 	 */
