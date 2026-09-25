@@ -3,7 +3,7 @@ Contributors: chipasia, wanzulnet
 Tags: chip, gravity forms, payment, fpx, payment gateway
 Requires at least: 6.3
 Tested up to: 7.1
-Stable tag: 1.4.0
+Stable tag: 1.5.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -58,23 +58,19 @@ Integrate your Gravity Forms with CHIP as documented in our [API Documentation](
 
 == Changelog ==
 
-= 1.4.0 2026-09-25 =
-* Added - Subscription (recurring billing) support. Set a feed's Transaction Type to Subscription to sell a recurring plan with a recurring amount, billing cycle, optional trial and setup fee, and a limited number of installments. Cards are stored at CHIP; renewals are charged automatically with no customer present.
-* Added - An hourly renewal engine that charges each due subscription against its stored CHIP recurring token, anchored on the date the payment was due rather than on the date the check ran.
-* Added - Automatic payment recovery. A failed renewal is retried on a 1, 3, and 5 day ladder, the customer is emailed a secure single-use link to pay the outstanding amount and save a new card in one step, and the subscription is marked Expired once the ladder is exhausted instead of retrying indefinitely.
-* Added - An admin **CHIP Subscriptions** page listing every subscription with its status, next payment date and retry count, with actions to retry a failed payment now, cancel a subscription, or re-send the customer's update-card link.
-* Added - A customer-facing secure card-update page. The link is signed, single-use, expires after 7 days and is emailed only to the address on the entry; card details are entered only on CHIP's hosted page, never in the WordPress admin.
-* Added - Three subscription notification events (Subscription Renewed, Subscription Payment Failed, Subscription Expired) and the `{chip_update_card_link}` merge tag.
-* Added - A card-only notice in the feed settings explaining that recurring tokens are issued for cards only, so a Subscription feed offers cards while one-time feeds keep every method the brand has enabled.
-* Added - Release-metadata tests asserting the declared WordPress floor agrees across the plugin header, readme.txt, README.md and phpcs.xml, that `Tested up to` is a MAJOR.MINOR version, that the header version, version constant and Stable tag agree, and that every screenshot readme.txt names actually exists.
-* Fixed - The plugin header now declares `Requires at least` and `Requires PHP`, so WordPress can block an install on an unsupported site and the plugin page shows the requirements. Previously only readme.txt carried them, which WordPress does not read for install or update checks.
-* Fixed - readme.txt declared a sixth screenshot whose image was never committed, so the WordPress.org plugin page served a 404 for it. The entry now describes the CHIP Subscriptions page and the image ships with the plugin.
-* Fixed - The payment amount is resolved from the field the configured transaction type uses, so a feed left on the default no longer breaks the checkout redirect.
-* Fixed - The plugin's own asset URLs (menu icon, settings screenshot) are anchored on the plugin root instead of `includes/`, where no assets exist and every one of them 404'd.
-* Fixed - The refund button is kept on an active subscription entry; the Cancel Subscription button is reachable.
-* Fixed - Subscription lifecycle hooks are implemented and `entry_info()` no longer shadows Gravity Forms core, so subscription state renders correctly on the entry screen.
-* Changed - Bumped \"Gravity Forms tested up to\" to 3.1 and WordPress \"Tested up to\" to 7.1, both verified against the E2E environment.
-* Changed - README.md now documents subscription support, the card-only constraint and the plugin's requirements; it previously described one-time payments only.
+= 1.5.0 2026-09-25 =
+* Added - The **CHIP Subscriptions** screen is now a real WordPress list table, with search, bulk actions, screen options for hiding columns, sortable columns and pagination, instead of a hand-built table.
+* Added - A **Charge now** action that collects a subscription's next payment before it is due, for support cases such as a customer asking to pay early. It asks for confirmation first, because it charges the stored card outside the normal schedule, and it leaves the billing schedule, the installments and the retry ladder untouched.
+* Fixed - A failed renewal no longer sends two emails. The built-in dunning email now stands down when a notification you configured will send for the same event, so a notification on **Subscription Payment Failed** is the only email the customer receives.
+* Fixed - A failure that exhausts the retry ladder no longer announces two events in one run, so a notification on both **Subscription Payment Failed** and **Subscription Expired** will not double up.
+* Fixed - The built-in dunning email is no longer sent once a subscription has expired, where the update-card link it carried had already stopped working. Customers are emailed on the retry attempts before that, while their card can still be updated.
+* Fixed - **Retry now** names the actual reason it collected nothing, instead of listing every possibility and leaving you to guess. A subscription that is merely not yet due is told its next payment date, and is offered **Charge now** instead of a retry that cannot work.
+* Fixed - The subscription actions (**Send update-card link**, retry, cancel) are gated on the same capability as the page that offers them, so they no longer answer "You are not allowed to do that." for administrators and Gravity Forms users, who carry `gform_full_access` rather than the granular settings capability.
+* Fixed - The Screen Options column preferences on the subscriptions screen are honoured, so hiding a column sticks instead of being silently reset on the next page load.
+* Fixed - A subscription row links to its own entry, rather than to a form entry url that did not exist.
+* Fixed - **Send update-card link** reports whether the email actually left, instead of reporting success even when the address was refused or the send failed.
+* Changed - Documented how to customise subscription emails: the `{chip_update_card_link}` merge tag, the three subscription notification events, the plugin's filters, and the Gravity Forms hooks for changing the design, the subject or the sender.
+* Changed - Updated to the PHPUnit configuration schema that CI actually runs, so a passing suite no longer reports a deprecation on every run.
 
 [See changelog for all versions](https://github.com/CHIPAsia/chip-for-gravity-forms/releases).
 
