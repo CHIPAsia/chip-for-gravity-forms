@@ -536,12 +536,16 @@ class GF_Chip_SubscriptionsTableTest extends TestCase {
 	 */
 	public function test_row_action_links_offer_only_the_permitted_operations() {
 		// A live subscription with a token can be re-linked and retried.
+		// The fixture's next payment is in the FUTURE, so the correct action
+		// for it is "Charge now": a retry there could only answer "nothing to
+		// retry". The two must not both be offered.
 		$links = GF_Chip_Subscriptions_Table::row_action_links( $this->subscription() );
 
 		$this->assertArrayHasKey( 'send', $links );
-		$this->assertArrayHasKey( 'retry', $links );
+		$this->assertArrayNotHasKey( 'retry', $links );
+		$this->assertArrayHasKey( 'charge_now', $links );
 		$this->assertStringContainsString( 'chip_send_card_update', $links['send'] );
-		$this->assertStringContainsString( 'chip_retry_renewal', $links['retry'] );
+		$this->assertStringContainsString( 'chip_charge_now', $links['charge_now'] );
 
 		// A cancelled one can be neither: there is no future charge to
 		// redirect and no live token to retry.
@@ -557,6 +561,25 @@ class GF_Chip_SubscriptionsTableTest extends TestCase {
 
 		$this->assertArrayNotHasKey( 'send', $dead );
 		$this->assertArrayNotHasKey( 'retry', $dead );
+		$this->assertArrayNotHasKey( 'charge_now', $dead );
+	}
+
+	/**
+	 * A subscription that is already due gets Retry, never Charge now.
+	 *
+	 * These are two names for the same collection, told apart only by the
+	 * calendar, so offering both would be offering one action twice.
+	 */
+	public function test_an_already_due_subscription_gets_retry_not_charge_now() {
+		$links = GF_Chip_Subscriptions_Table::row_action_links(
+			$this->subscription(
+				array( 'chip_sub_next_payment' => gmdate( 'Y-m-d H:i:s', time() - 86400 ) )
+			)
+		);
+
+		$this->assertArrayHasKey( 'retry', $links );
+		$this->assertArrayNotHasKey( 'charge_now', $links, 'a due subscription must not also offer Charge now' );
+		$this->assertStringContainsString( 'chip_retry_renewal', $links['retry'] );
 	}
 
 	/**

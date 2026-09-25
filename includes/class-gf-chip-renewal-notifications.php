@@ -517,6 +517,228 @@ class GF_Chip_Renewal_Notifications {
 	}
 
 	/**
+	 * Handles the admin "Charge now" action.
+	 *
+	 * Two steps on purpose. This collects money immediately from a card the
+	 * customer already handed over, outside their billing schedule, so the
+	 * request that arrives here only ASKS: it shows what will be charged and
+	 * waits for a second, explicit confirmation. A stray click, a browser
+	 * prefetch or an impatient double-click cannot charge anyone.
+	 *
+	 * The confirmation carries its own nonce, so a replayed confirmation from
+	 * an earlier visit is rejected rather than charging a second time.
+	 *
+	 * @return void
+	 */
+	public static function handle_admin_charge_now() {
+		$entry_id = isset( $_GET['entry_id'] ) ? absint( wp_unslash( $_GET['entry_id'] ) ) : 0;
+
+		if ( $entry_id <= 0 ) {
+			wp_die( esc_html__( 'Missing entry.', 'chip-for-gravity-forms' ) );
+		}
+
+		check_admin_referer( 'chip_charge_now_' . $entry_id );
+
+		if ( ! GF_Chip_Subscriptions_Page::current_user_can_manage() ) {
+			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
+		}
+
+		$entry = GFAPI::get_entry( $entry_id );
+
+		if ( ! is_array( $entry ) ) {
+			wp_die( esc_html__( 'Entry not found.', 'chip-for-gravity-forms' ) );
+		}
+
+		$entry = GF_Chip_Card_Update::hydrate( $entry );
+		$now   = gmdate( 'Y-m-d H:i:s' );
+
+		if ( ! GF_Chip_Subscriptions_Page::can_charge_now( $entry, $now ) ) {
+			self::redirect(
+				array(
+					'page'     => GF_Chip_Subscriptions_Page::slug(),
+					'charge'   => 'refused',
+					'entry_id' => $entry_id,
+				)
+			);
+		}
+
+		self::render_charge_confirmation( $entry, $now );
+	}
+
+	/**
+	 * Asks the operator to confirm an early charge.
+	 *
+	 * Everything the operator needs in order to judge the decision is on this
+	 * screen: which subscription, how much, and when it would otherwise have
+	 * been collected. Rendered as a plain form POST so the confirmation is a
+	 * deliberate submission rather than a URL that a prefetcher can follow.
+	 *
+	 * @param array  $entry Entry with chip_sub_* meta flattened in.
+	 * @param string $now   Current UTC time.
+	 * @return void
+	 */
+	private static function render_charge_confirmation( $entry, $now ) {
+		unset( $now );
+
+		$entry_id = absint( rgar( $entry, 'id' ) );
+		$amount   = self::charge_now_amount_cents( $entry );
+		$currency = (string) rgar( $entry, 'currency', 'MYR' );
+		$form     = GFAPI::get_form( rgar( $entry, 'form_id' ) );
+		$next     = (string) rgar( $entry, 'chip_sub_next_payment' );
+
+		$confirm_url = wp_nonce_url(
+			add_query_arg(
+				array(
+					'action'   => 'chip_charge_now_confirm',
+					'entry_id' => $entry_id,
+				),
+				admin_url( 'admin-post.php' )
+			),
+			'chip_charge_now_confirm_' . $entry_id
+		);
+
+		wp_die(
+			wp_kses_post(
+				sprintf(
+					'<p>%1$s</p><p><strong>%2$s</strong></p><p>%3$s</p>',
+					esc_html(
+						sprintf(
+							/* translators: 1: entry id, 2: form title. */
+							__( 'Charge subscription #%1$d (%2$s) now?', 'chip-for-gravity-forms' ),
+							$entry_id,
+							is_array( $form ) ? (string) rgar( $form, 'title' ) : ''
+						)
+					),
+					esc_html(
+						$amount > 0
+							? sprintf(
+								/* translators: %s: formatted amount. */
+								__( 'This will charge the saved card %s immediately.', 'chip-for-gravity-forms' ),
+								GF_Chip_Card_Update_Page::format_amount( $amount, $currency )
+							)
+							: __( 'The amount could not be resolved, so the charge will be refused.', 'chip-for-gravity-forms' )
+					),
+					esc_html(
+						'' !== $next
+							? sprintf(
+								/* translators: %s: scheduled date. */
+								__( 'It was scheduled for %s. Charging now does NOT move that date.', 'chip-for-gravity-forms' ),
+								$next
+							)
+							: ''
+					)
+				)
+			),
+			esc_html__( 'Confirm early charge', 'chip-for-gravity-forms' ),
+			array(
+				'response'  => 200,
+				'back_link' => true,
+				'link_url'  => esc_url( $confirm_url ),
+				'link_text' => esc_html__( 'Yes, charge now', 'chip-for-gravity-forms' ),
+			)
+		);
+	}
+
+	/**
+	 * The amount an early charge would collect, in cents.
+	 *
+	 * The same resolution the renewal itself uses, so what the confirmation
+	 * screen promises is what the charge attempts.
+	 *
+	 * @param array $entry Entry with chip_sub_* meta flattened in.
+	 * @return int
+	 */
+	private static function charge_now_amount_cents( $entry ) {
+		return (int) GF_Chip::resolve_renewal_amount_cents( $entry );
+	}
+
+	/**
+	 * Carries out a confirmed early charge.
+	 *
+	 * @return void
+	 */
+	public static function handle_admin_charge_now_confirm() {
+		$entry_id = isset( $_GET['entry_id'] ) ? absint( wp_unslash( $_GET['entry_id'] ) ) : 0;
+
+		if ( $entry_id <= 0 ) {
+			wp_die( esc_html__( 'Missing entry.', 'chip-for-gravity-forms' ) );
+		}
+
+		check_admin_referer( 'chip_charge_now_confirm_' . $entry_id );
+
+		if ( ! GF_Chip_Subscriptions_Page::current_user_can_manage() ) {
+			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
+		}
+
+		$addon = GF_Chip::get_instance();
+		$entry = GFAPI::get_entry( $entry_id );
+
+		if ( ! is_array( $entry ) ) {
+			wp_die( esc_html__( 'Entry not found.', 'chip-for-gravity-forms' ) );
+		}
+
+		$entry = GF_Chip_Card_Update::hydrate( $entry );
+
+		// Re-checked at the moment of the charge, not trusted from the earlier
+		// screen: the window between asking and confirming is exactly when a
+		// second cron run could have collected this cycle already.
+		if ( ! GF_Chip_Subscriptions_Page::can_charge_now( $entry, gmdate( 'Y-m-d H:i:s' ) ) ) {
+			self::redirect(
+				array(
+					'page'     => GF_Chip_Subscriptions_Page::slug(),
+					'charge'   => 'refused',
+					'entry_id' => $entry_id,
+				)
+			);
+		}
+
+		// $any_time = true. This is the only caller allowed to set it.
+		$result = $addon->charge_renewal( $entry, false, true );
+
+		self::redirect(
+			array(
+				'page'     => GF_Chip_Subscriptions_Page::slug(),
+				'charge'   => is_array( $result ) ? (string) $result['status'] : 'failed',
+				'entry_id' => $entry_id,
+			)
+		);
+	}
+
+	/**
+	 * Redirects back to the subscriptions screen and stops.
+	 *
+	 * @param array $args Query args.
+	 * @return void
+	 */
+	private static function redirect( $args ) {
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
+	/**
+	 * URL that triggers an early charge for one subscription.
+	 *
+	 * Nonce-protected and capability-guarded in the handler. The URL only
+	 * ASKS: the charge itself requires a second, explicit confirmation, so a
+	 * stray click or a prefetch cannot move money.
+	 *
+	 * @param int $entry_id Entry id.
+	 * @return string
+	 */
+	public static function admin_charge_now_url( $entry_id ) {
+		return wp_nonce_url(
+			add_query_arg(
+				array(
+					'action'   => 'chip_charge_now',
+					'entry_id' => (int) $entry_id,
+				),
+				admin_url( 'admin-post.php' )
+			),
+			'chip_charge_now_' . (int) $entry_id
+		);
+	}
+
+	/**
 	 * The nonce-protected admin URL that sends a link for an entry.
 	 *
 	 * @param int $entry_id Entry id.

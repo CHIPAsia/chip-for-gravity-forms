@@ -478,6 +478,66 @@ class GF_Chip_Subscriptions_Page {
 	// -----------------------------------------------------------------
 
 	/**
+	 * Reports the result of a confirmed early charge.
+	 *
+	 * Kept separate from the retry notice because the outcome means something
+	 * different: an early charge that fails leaves the subscription healthy
+	 * and its schedule untouched, so saying "the subscription remains on hold"
+	 * would be wrong.
+	 *
+	 * @return void
+	 */
+	public static function render_charge_notice() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only redirect flag, no state change.
+		$charge = isset( $_GET['charge'] ) ? sanitize_key( wp_unslash( $_GET['charge'] ) ) : '';
+
+		if ( '' === $charge ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- display-only redirect flag, no state change.
+		$entry_id = isset( $_GET['entry_id'] ) ? absint( wp_unslash( $_GET['entry_id'] ) ) : 0;
+		$entry    = $entry_id > 0 ? sprintf( ' (#%d)', $entry_id ) : '';
+
+		$messages = array(
+			'charged' => array(
+				'success',
+				sprintf(
+					/* translators: %s: entry reference. */
+					__( 'Early charge collected%1$s. The scheduled cycle was not moved.', 'chip-for-gravity-forms' ),
+					$entry
+				),
+			),
+			'failed'  => array(
+				'error',
+				sprintf(
+					/* translators: %s: entry reference. */
+					__( 'Early charge declined%1$s. Nothing on the subscription changed -- the scheduled cycle still runs as normal, and no retry slot was used.', 'chip-for-gravity-forms' ),
+					$entry
+				),
+			),
+			'refused' => array(
+				'warning',
+				sprintf(
+					/* translators: %s: entry reference. */
+					__( 'Early charge refused%1$s: this subscription is either already due (use Retry) or not chargeable at all.', 'chip-for-gravity-forms' ),
+					$entry
+				),
+			),
+		);
+
+		if ( ! isset( $messages[ $charge ] ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			esc_attr( $messages[ $charge ][0] ),
+			esc_html( $messages[ $charge ][1] )
+		);
+	}
+
+	/**
 	 * Reports the result of a manual retry, if one just ran.
 	 *
 	 * The handler redirects here with ?retry=<status>, so the operator sees
@@ -667,6 +727,11 @@ class GF_Chip_Subscriptions_Page {
 	 * collection is stuck: on hold after a failed attempt, or active and past
 	 * due (the cron simply has not run yet).
 	 *
+	 * "Not due yet" is deliberately NOT retryable. Offering Retry there is
+	 * what made the button pointless: pressing it could only answer "nothing
+	 * to retry", because nothing was due. A subscription that is simply early
+	 * gets "Charge now" instead, which is a different and explicit act.
+	 *
 	 * @param array $entry Entry with chip_sub_* meta flattened in.
 	 * @return bool
 	 */
@@ -681,7 +746,36 @@ class GF_Chip_Subscriptions_Page {
 
 		$state = GF_Chip::get_subscription_state( $entry );
 
-		return in_array( $state, array( 'on-hold', 'active' ), true );
+		if ( ! in_array( $state, array( 'on-hold', 'active' ), true ) ) {
+			return false;
+		}
+
+		return GF_Chip_Renewals::BLOCKED_NOT_YET_DUE !== GF_Chip_Renewals::blocking_reason( $entry, gmdate( 'Y-m-d H:i:s' ), true );
+	}
+
+	/**
+	 * Whether a row should offer a "charge now" action.
+	 *
+	 * Offered when the ONLY thing standing between the subscription and a
+	 * charge is the calendar: if it would be chargeable with the date ignored
+	 * (same token, same live state) but is blocked by a future date, then an
+	 * operator can reasonably bring the collection forward.
+	 *
+	 * Expressed as those two questions rather than its own set of checks, so
+	 * the button can never appear for a subscription the charge itself would
+	 * refuse. A cancelled subscription, or one with no card, is not
+	 * "not due yet" -- it is not chargeable at all, and gets no button.
+	 *
+	 * @param array  $entry Entry with chip_sub_* meta flattened in.
+	 * @param string $now   Current UTC time, 'Y-m-d H:i:s'.
+	 * @return bool
+	 */
+	public static function can_charge_now( $entry, $now ) {
+		$ignoring_the_date = GF_Chip_Renewals::blocking_reason( $entry, $now, false, true );
+		$respecting_it     = GF_Chip_Renewals::blocking_reason( $entry, $now, false, false );
+
+		return null === $ignoring_the_date
+			&& GF_Chip_Renewals::BLOCKED_NOT_YET_DUE === $respecting_it;
 	}
 
 	/**
@@ -1124,6 +1218,7 @@ class GF_Chip_Subscriptions_Page {
 				?>
 			</form>
 
+			<?php self::render_charge_notice(); ?>
 			<?php self::render_retry_notice(); ?>
 		</div>
 		<?php

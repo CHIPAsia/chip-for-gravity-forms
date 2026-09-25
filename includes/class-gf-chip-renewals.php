@@ -165,14 +165,17 @@ class GF_Chip_Renewals {
 	 *
 	 * @param array  $entry Entry array with chip_sub_* meta flattened in.
 	 * @param string $now   Current UTC time, 'Y-m-d H:i:s'.
-	 * @param bool   $force Attempt a charge even when the subscription is
-	 *                      on-hold. Used only by an operator-initiated retry;
-	 *                      the cron must never set this, or it would bypass the
-	 *                      dunning ladder on every run.
+	 * @param bool   $force    Attempt a charge even when the subscription is
+	 *                         on-hold. Used only by an operator-initiated retry;
+	 *                         the cron must never set this, or it would bypass
+	 *                         the dunning ladder on every run.
+	 * @param bool   $any_time Charge before the scheduled date. Only an
+	 *                         operator-confirmed "Charge now" sets this; the
+	 *                         cron must never set it.
 	 * @return bool
 	 */
-	public static function is_due( $entry, $now, $force = false ) {
-		return null === self::blocking_reason( $entry, $now, $force );
+	public static function is_due( $entry, $now, $force = false, $any_time = false ) {
+		return null === self::blocking_reason( $entry, $now, $force, $any_time );
 	}
 
 	/**
@@ -190,10 +193,14 @@ class GF_Chip_Renewals {
 	 *
 	 * @param array  $entry Entry array with chip_sub_* meta flattened in.
 	 * @param string $now   Current UTC time, 'Y-m-d H:i:s'.
-	 * @param bool   $force Operator override, as in is_due().
+	 * @param bool   $force    Operator override, as in is_due().
+	 * @param bool   $any_time Charge regardless of the scheduled date. Only an
+	 *                         operator-initiated early charge sets this: it is
+	 *                         what turns "not due yet" into a chargeable
+	 *                         subscription. The cron must never set it.
 	 * @return string|null One of the BLOCKED_* constants, or null when chargeable.
 	 */
-	public static function blocking_reason( $entry, $now, $force = false ) {
+	public static function blocking_reason( $entry, $now, $force = false, $any_time = false ) {
 		// A one-time payment is not a subscription. Checked explicitly rather
 		// than relying on chip_sub_status, which a stray meta write could set.
 		if ( ! GF_Chip::is_subscription_entry( $entry ) ) {
@@ -225,6 +232,14 @@ class GF_Chip_Renewals {
 
 		if ( empty( $next ) ) {
 			return self::BLOCKED_NO_SCHEDULE;
+		}
+
+		// An early charge is deliberate, so the schedule is not consulted.
+		// This is the ONLY condition $any_time skips: everything above still
+		// applies, so an early charge cannot resurrect a dead subscription or
+		// charge a card that is not there.
+		if ( $any_time ) {
+			return null;
 		}
 
 		if ( self::compare_datetime( $next, $now ) > 0 ) {
@@ -402,6 +417,11 @@ class GF_Chip_Renewals {
 	 * @param bool   $force     Attempt a charge even when on-hold. Only the
 	 *                          operator-initiated retry sets this; the cron
 	 *                          must not, or it would bypass the ladder.
+	 * @param bool   $any_time  Charge before the scheduled date. Only a
+	 *                          confirmed "Charge now" sets this. The cycle is
+	 *                          NOT advanced and no installment is consumed --
+	 *                          an early collection is an extra payment brought
+	 *                          forward, not the scheduled one being taken.
 	 * @return array {
 	 *     @type string      $action    charge|skip|expire.
 	 *     @type string|null $claim     Next payment date to write before charging.
@@ -409,13 +429,27 @@ class GF_Chip_Renewals {
 	 *     @type int         $remaining Remaining cycles after this one.
 	 * }
 	 */
-	public static function plan_renewal( $entry, $now, $length, $unit, $remaining, $force = false ) {
-		if ( ! self::is_due( $entry, $now, $force ) ) {
+	public static function plan_renewal( $entry, $now, $length, $unit, $remaining, $force = false, $any_time = false ) {
+		if ( ! self::is_due( $entry, $now, $force, $any_time ) ) {
 			return array(
 				'action'     => 'skip',
 				'claim'      => null,
 				'remaining'  => (int) $remaining,
 				'due_anchor' => null,
+			);
+		}
+
+		// An early charge must not move the schedule: the customer's billing
+		// day is an agreement, and collecting early is not a reason to shift
+		// every later cycle forward. Returning no claim leaves
+		// chip_sub_next_payment exactly where it was, so the scheduled cycle
+		// still runs. This is also why no installment is consumed.
+		if ( $any_time ) {
+			return array(
+				'action'     => 'charge',
+				'claim'      => null,
+				'remaining'  => (int) $remaining,
+				'due_anchor' => (string) rgar( $entry, 'chip_sub_next_payment' ),
 			);
 		}
 

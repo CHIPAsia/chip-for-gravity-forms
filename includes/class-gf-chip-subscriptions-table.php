@@ -276,6 +276,16 @@ class GF_Chip_Subscriptions_Table extends WP_List_Table {
 				esc_url( GF_Chip_Renewal_Notifications::admin_retry_url( $entry_id ) ),
 				esc_html__( 'Retry now', 'chip-for-gravity-forms' )
 			);
+		} elseif ( GF_Chip_Subscriptions_Page::can_charge_now( $entry, gmdate( 'Y-m-d H:i:s' ) ) ) {
+			// "Charge now" only appears when "Retry now" does not: both act on
+			// the same subscription and differ only in whether the schedule
+			// makes the charge due. Offering both would be offering one action
+			// twice, with a different label for each.
+			$actions['charge_now'] = sprintf(
+				'<a href="%s">%s</a>',
+				esc_url( GF_Chip_Renewal_Notifications::admin_charge_now_url( $entry_id ) ),
+				esc_html__( 'Charge now', 'chip-for-gravity-forms' )
+			);
 		}
 
 		return $actions;
