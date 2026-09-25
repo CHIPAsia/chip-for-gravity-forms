@@ -30,29 +30,58 @@ So a dunning email with your own design is: one notification, event set to
 
 ### Read this before configuring that notification
 
-The plugin sends a **built-in fallback email** on a failed renewal, and it does
-so unconditionally — it does not check whether you have configured a
-notification for the event. So if you configure a *Subscription Payment Failed*
-notification **and** that fallback fires, the customer receives **two**
-messages for the same failure.
+The plugin sends a **built-in fallback email** on every failed renewal, and it
+does so unconditionally — it does not check whether you have configured a
+notification for the event. **Verified on a live install:** with a
+*Subscription Payment Failed* notification configured, one failed renewal
+produced **two** messages:
 
-Today the practical answer is to use one or the other:
+```
+1. to=customer@example.com   Action needed: payment failed for your subscription
+2. to=probe@example.com      the configured notification
+```
+
+So use one or the other:
 
 - Configure the notification and design it, or
 - Configure nothing and let the built-in email do the work.
 
 If you need both — a designed customer email and an admin alert on the same
-event — make the customer notification yours and keep the admin one on a
-different event, or suppress one of them in your own code.
+event — put your customer-facing message on the plugin's built-in email and
+keep the admin one on a different event.
 
-There is a further consequence worth knowing: a failure that exhausts the retry
-ladder fires **both** events in the same run, so a notification on
-*Subscription Payment Failed* and one on *Subscription Expired* both send. Make
-them distinct messages, not variations of one.
+There is a further consequence: a failure that exhausts the retry ladder fires
+**both** the failed and the expired event in the same run, so a notification on
+each sends twice. Make them distinct messages, not variations of one.
 
-Both of these are worth fixing in the plugin (the fallback should stand down
-when a notification is configured). They are documented here rather than
-silently worked around.
+Both are worth fixing in the plugin — the fallback should stand down when a
+notification is configured. Documented here rather than silently worked around.
+
+## When the customer saves a card on a failed renewal
+
+The card-update link charges the outstanding amount **as part of saving the
+card** — it is not a free token swap. The customer does not have to be chased
+separately for the missed payment; settling the card settles the debt.
+
+Whether it charges is decided by the subscription's state, and the outcome is
+visible in the purchase itself. Verified against a live install, printing the
+real payload sent to the gateway:
+
+| Subscription state | Product sent | Amount | Result |
+|---|---|---|---|
+| Active, past due | Outstanding payment | the subscription amount | **charged** |
+| On-hold (dunning) | Outstanding payment | the subscription amount | **charged** |
+| Active, not yet due | Update payment method | 0 | card saved only |
+| Cancelled | Update payment method | 0 | card saved only |
+| Expired | Update payment method | 0 | card saved only |
+
+So a customer who is merely replacing an expiring card is **not** charged, and
+a customer whose renewal failed **is**. The amount charged is the one the
+subscription was set up with, not whatever the form currently resolves to, so a
+settled cycle matches what the customer agreed to pay.
+
+The customer's new card is captured in the same transaction, so there is no
+window where the old card is gone and no new one is stored.
 
 ## Filters
 
