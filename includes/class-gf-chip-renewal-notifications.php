@@ -391,14 +391,20 @@ class GF_Chip_Renewal_Notifications {
 			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
 		}
 
-		if ( ! self::maybe_send_dunning_email( $entry_id, 0, true ) ) {
+		// The outcome is reported, never assumed. The button previously
+		// redirected with &sent=<id> regardless of whether the mail left, so a
+		// refused recipient or a refused send looked exactly like a success.
+		$sent = self::maybe_send_dunning_email( $entry_id, 0, true );
+
+		if ( ! $sent ) {
 			GF_Chip::get_instance()->log_debug( __METHOD__ . '(): could not send for entry #' . $entry_id );
 		}
 
 		$redirect = add_query_arg(
 			array(
-				'page' => GF_Chip_Subscriptions_Page::slug(),
-				'sent' => $entry_id,
+				'page'     => GF_Chip_Subscriptions_Page::slug(),
+				'sent'     => $sent ? $entry_id : 0,
+				'sendfail' => $sent ? 0 : 1,
 			),
 			admin_url( 'admin.php' )
 		);
@@ -487,17 +493,26 @@ class GF_Chip_Renewal_Notifications {
 		// Force: an operator pressed Retry, so an on-hold subscription may be
 		// attempted. The attempt is still counted by the charge path.
 		$result = $addon->charge_renewal( $entry, true );
+		$status = is_array( $result ) ? (string) $result['status'] : 'failed';
 
-		wp_safe_redirect(
-			add_query_arg(
-				array(
-					'page'     => GF_Chip_Subscriptions_Page::slug(),
-					'retry'    => is_array( $result ) ? $result['status'] : 'failed',
-					'entry_id' => $entry_id,
-				),
-				admin_url( 'admin.php' )
-			)
+		$args = array(
+			'page'     => GF_Chip_Subscriptions_Page::slug(),
+			'retry'    => $status,
+			'entry_id' => $entry_id,
 		);
+
+		// A skip is not one situation. Carry the reason so the notice can name
+		// it instead of listing every possibility and leaving the operator to
+		// work out which one applies.
+		if ( 'skipped' === $status ) {
+			$reason = GF_Chip_Renewals::blocking_reason( $entry, gmdate( 'Y-m-d H:i:s' ), true );
+
+			if ( null !== $reason ) {
+				$args['reason'] = $reason;
+			}
+		}
+
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php' ) ) );
 		exit;
 	}
 

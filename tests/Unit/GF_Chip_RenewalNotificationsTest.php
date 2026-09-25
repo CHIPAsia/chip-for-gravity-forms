@@ -641,6 +641,50 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 	}
 
 	/**
+	 * The button must report what actually happened.
+	 *
+	 * The handler used to redirect with &sent=<id> unconditionally, so a
+	 * refused recipient and a refused send both looked identical to a
+	 * success. That is how "no email arrived" stayed invisible.
+	 */
+	public function test_send_handler_reports_the_real_outcome(): void {
+		$source = file_get_contents( __DIR__ . '/../../includes/class-gf-chip-renewal-notifications.php' );
+
+		// The return value must be captured, not discarded.
+		$this->assertMatchesRegularExpression(
+			'/\$sent\s*=\s*self::maybe_send_dunning_email\(/',
+			$source,
+			'the handler must capture whether the mail was sent'
+		);
+
+		// And the redirect must depend on it.
+		$this->assertMatchesRegularExpression(
+			"/'sent'\s*=>\s*\\\$sent\s*\?/",
+			$source,
+			'the sent flag must depend on the actual outcome'
+		);
+
+		// With a distinct failure flag, so the page can say so.
+		$this->assertStringContainsString( "'sendfail'", $source );
+	}
+
+	/**
+	 * And the page must render a failure notice, not a success one.
+	 *
+	 * Without this the handler reports the failure and the page drops it.
+	 */
+	public function test_page_renders_a_failure_notice(): void {
+		$source = file_get_contents( __DIR__ . '/../../includes/class-gf-chip-subscriptions-page.php' );
+
+		$this->assertStringContainsString( "\$_GET['sendfail']", $source );
+		$this->assertMatchesRegularExpression(
+			'/sendfail.*?notice-error/s',
+			$source,
+			'the failure flag must produce an error notice'
+		);
+	}
+
+	/**
 	 * The merge tag filter is registered.
 	 */
 	public function test_merge_tag_filter_is_registered(): void {
