@@ -287,6 +287,97 @@ class GF_Chip_SubscriptionsPageTest extends TestCase {
 	}
 
 	// ---------------------------------------------------------------------
+	// Entry-detail URLs.
+	//
+	// Gravity Forms addresses an entry by TWO parameters: `id` is the FORM id
+	// and `lid` is the ENTRY id. Passing the entry id as `id` and omitting
+	// `lid` navigates to the entry list of a form that does not exist. The
+	// operator clicks "#93" and lands on a 404-ish screen, not the entry.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The link carries the entry id as `lid`, never as `id`.
+	 *
+	 * This is the defect: the old code wrote the entry id into `id` and sent
+	 * no `lid` at all.
+	 */
+	public function test_entry_url_puts_the_entry_id_in_lid(): void {
+		WP_Mock::userFunction( 'admin_url' )->andReturn( 'https://example.com/wp-admin/admin.php' );
+		WP_Mock::userFunction( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $url ) {
+				return $url . '?' . http_build_query( $args );
+			}
+		);
+
+		$url = GF_Chip_Subscriptions_Page::entry_url( 2, 93 );
+
+		$this->assertStringContainsString( 'lid=93', $url );
+	}
+
+	/**
+	 * The link carries the form id as `id`, which is what GF routes on.
+	 *
+	 * Without a form id GF has no entry list to render and the detail page
+	 * cannot resolve the entry.
+	 */
+	public function test_entry_url_puts_the_form_id_in_id(): void {
+		WP_Mock::userFunction( 'admin_url' )->andReturn( 'https://example.com/wp-admin/admin.php' );
+		WP_Mock::userFunction( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $url ) {
+				return $url . '?' . http_build_query( $args );
+			}
+		);
+
+		$url = GF_Chip_Subscriptions_Page::entry_url( 2, 93 );
+
+		$this->assertStringContainsString( 'id=2', $url );
+	}
+
+	/**
+	 * The URL must not send the entry id as the form id.
+	 *
+	 * The exact old failure: `id=93` with `lid` absent, so a form with id 93
+	 * does not exist and the operator never reaches entry 93.
+	 *
+	 * Asserted by parsing the query string, not by substring: `lid=93`
+	 * contains `id=93` as a substring, so a naive assertion would pass on
+	 * correct code for the wrong reason and could never fail on the defect.
+	 */
+	public function test_entry_url_does_not_pass_the_entry_id_as_the_form_id(): void {
+		WP_Mock::userFunction( 'admin_url' )->andReturn( 'https://example.com/wp-admin/admin.php' );
+		WP_Mock::userFunction( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $url ) {
+				return $url . '?' . http_build_query( $args );
+			}
+		);
+
+		$query = parse_url( GF_Chip_Subscriptions_Page::entry_url( 2, 93 ), PHP_URL_QUERY );
+
+		parse_str( (string) $query, $args );
+
+		$this->assertSame( '2', (string) $args['id'], 'id must be the FORM id' );
+		$this->assertSame( '93', (string) $args['lid'], 'lid must be the ENTRY id' );
+		$this->assertNotSame( $args['id'], $args['lid'], 'form id and entry id must not be conflated' );
+	}
+
+	/**
+	 * The link reaches the entry detail view on the right page.
+	 */
+	public function test_entry_url_targets_the_entry_detail_view(): void {
+		WP_Mock::userFunction( 'admin_url' )->andReturn( 'https://example.com/wp-admin/admin.php' );
+		WP_Mock::userFunction( 'add_query_arg' )->andReturnUsing(
+			function ( $args, $url ) {
+				return $url . '?' . http_build_query( $args );
+			}
+		);
+
+		$url = GF_Chip_Subscriptions_Page::entry_url( 2, 93 );
+
+		$this->assertStringContainsString( 'page=gf_entries', $url );
+		$this->assertStringContainsString( 'view=entry', $url );
+	}
+
+	// ---------------------------------------------------------------------
 	// Nav registration.
 	// ---------------------------------------------------------------------
 

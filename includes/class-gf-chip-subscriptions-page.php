@@ -478,7 +478,7 @@ class GF_Chip_Subscriptions_Page {
 						<?php $overdue = self::is_overdue( $row, $now ); ?>
 						<tr>
 							<td>
-								<a href="<?php echo esc_url( self::entry_url( rgar( $row, 'id' ) ) ); ?>">
+								<a href="<?php echo esc_url( self::entry_url( rgar( $row, 'form_id' ), rgar( $row, 'id' ) ) ); ?>">
 									#<?php echo absint( rgar( $row, 'id' ) ); ?>
 								</a>
 							</td>
@@ -499,7 +499,7 @@ class GF_Chip_Subscriptions_Page {
 									</a>
 								<?php endif; ?>
 								<?php if ( self::can_cancel( $row ) ) : ?>
-									<a class="button button-small" href="<?php echo esc_url( self::entry_url( rgar( $row, 'id' ) ) ); ?>">
+									<a class="button button-small" href="<?php echo esc_url( self::entry_url( rgar( $row, 'form_id' ), rgar( $row, 'id' ) ) ); ?>">
 										<?php esc_html_e( 'Cancel', 'chip-for-gravity-forms' ); ?>
 									</a>
 								<?php endif; ?>
@@ -603,18 +603,25 @@ class GF_Chip_Subscriptions_Page {
 	/**
 	 * URL of the Gravity Forms entry detail for an entry.
 	 *
+	 * Gravity Forms addresses an entry by TWO parameters: `id` is the FORM id
+	 * and `lid` is the ENTRY id. Passing the entry id as `id` and omitting
+	 * `lid` sends the browser to the entry list of a form that does not exist,
+	 * so the operator lands somewhere that is not the entry at all.
+	 *
 	 * The cancel and card-update flows both live on the entry detail, so this
 	 * links there rather than duplicating them.
 	 *
+	 * @param int $form_id  Form id.
 	 * @param int $entry_id Entry id.
 	 * @return string
 	 */
-	public static function entry_url( $entry_id ) {
+	public static function entry_url( $form_id, $entry_id ) {
 		return add_query_arg(
 			array(
 				'page' => 'gf_entries',
 				'view' => 'entry',
-				'id'   => absint( $entry_id ),
+				'id'   => absint( $form_id ),
+				'lid'  => absint( $entry_id ),
 			),
 			admin_url( 'admin.php' )
 		);
