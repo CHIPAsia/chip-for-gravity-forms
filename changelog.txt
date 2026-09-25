@@ -1,5 +1,19 @@
 == Changelog ==
 
+= 1.5.0 2026-09-25 =
+* Added - The **CHIP Subscriptions** screen is now a real WordPress list table, with search, bulk actions, screen options for hiding columns, sortable columns and pagination, instead of a hand-built table.
+* Added - A **Charge now** action that collects a subscription's next payment before it is due, for support cases such as a customer asking to pay early. It asks for confirmation first, because it charges the stored card outside the normal schedule, and it leaves the billing schedule, the installments and the retry ladder untouched.
+* Fixed - A failed renewal no longer sends two emails. The built-in dunning email now stands down when a notification you configured will send for the same event, so a notification on **Subscription Payment Failed** is the only email the customer receives.
+* Fixed - A failure that exhausts the retry ladder no longer announces two events in one run, so a notification on both **Subscription Payment Failed** and **Subscription Expired** will not double up.
+* Fixed - The built-in dunning email is no longer sent once a subscription has expired, where the update-card link it carried had already stopped working. Customers are emailed on the retry attempts before that, while their card can still be updated.
+* Fixed - **Retry now** names the actual reason it collected nothing, instead of listing every possibility and leaving you to guess. A subscription that is merely not yet due is told its next payment date, and is offered **Charge now** instead of a retry that cannot work.
+* Fixed - The subscription actions (**Send update-card link**, retry, cancel) are gated on the same capability as the page that offers them, so they no longer answer "You are not allowed to do that." for administrators and Gravity Forms users, who carry `gform_full_access` rather than the granular settings capability.
+* Fixed - The Screen Options column preferences on the subscriptions screen are honoured, so hiding a column sticks instead of being silently reset on the next page load.
+* Fixed - A subscription row links to its own entry, rather than to a form entry url that did not exist.
+* Fixed - **Send update-card link** reports whether the email actually left, instead of reporting success even when the address was refused or the send failed.
+* Changed - Documented how to customise subscription emails: the `{chip_update_card_link}` merge tag, the three subscription notification events, the plugin's filters, and the Gravity Forms hooks for changing the design, the subject or the sender.
+* Changed - Updated to the PHPUnit configuration schema that CI actually runs, so a passing suite no longer reports a deprecation on every run.
+
 = 1.4.0 2026-09-25 =
 * Added - Subscription (recurring billing) support. Set a feed's Transaction Type to Subscription to sell a recurring plan with a recurring amount, billing cycle, optional trial and setup fee, and a limited number of installments. Cards are stored at CHIP; renewals are charged automatically with no customer present.
 * Added - An hourly renewal engine that charges each due subscription against its stored CHIP recurring token, anchored on the date the payment was due rather than on the date the check ran.
