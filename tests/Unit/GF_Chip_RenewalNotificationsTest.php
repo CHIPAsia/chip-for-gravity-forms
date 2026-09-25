@@ -200,6 +200,216 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 	}
 
 	// ---------------------------------------------------------------------
+	// The built-in email is a FALLBACK, not a second opinion.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * A notification the merchant configured for the failure event suppresses
+	 * the built-in email.
+	 *
+	 * Without this, one failed payment produces two messages: the merchant's
+	 * designed notification AND the built-in fallback. Reproduced on a live
+	 * install before the fix.
+	 */
+	public function test_configured_notification_suppresses_the_builtin_email(): void {
+		$form = array(
+			'notifications' => array(
+				'merchant' => array(
+					'event'    => GF_Chip_Renewal_Notifications::EVENT_FAILED,
+					'isActive' => true,
+				),
+			),
+		);
+
+		$this->assertTrue(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				$form,
+				array()
+			)
+		);
+	}
+
+	/**
+	 * A notification for a DIFFERENT event does not suppress it.
+	 *
+	 * The check must be about the event being announced, not about the form
+	 * having notifications at all — otherwise configuring a routine
+	 * admin-submission notification would silence dunning for every customer.
+	 */
+	public function test_notification_for_another_event_does_not_suppress(): void {
+		$form = array(
+			'notifications' => array(
+				'admin' => array(
+					'event'    => 'form_submission',
+					'isActive' => true,
+				),
+			),
+		);
+
+		$this->assertFalse(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				$form,
+				array()
+			)
+		);
+	}
+
+	/**
+	 * A notification the merchant switched OFF does not suppress it.
+	 *
+	 * `GFCommon::get_notifications()` does not filter on `isActive`, so a
+	 * check built on that call alone would make the plugin silent for a
+	 * customer whose merchant had merely parked their own notification —
+	 * nobody would be told anything.
+	 */
+	public function test_inactive_notification_does_not_suppress(): void {
+		$form = array(
+			'notifications' => array(
+				'merchant' => array(
+					'event'    => GF_Chip_Renewal_Notifications::EVENT_FAILED,
+					'isActive' => false,
+				),
+			),
+		);
+
+		$this->assertFalse(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				$form,
+				array()
+			)
+		);
+	}
+
+	/**
+	 * A notification whose conditional logic will not pass does not suppress it.
+	 *
+	 * The fallback exists so the customer is told when nothing else will. A
+	 * notification that cannot fire for this entry is not "something else".
+	 */
+	public function test_unsatisfied_conditional_logic_does_not_suppress(): void {
+		$form = array(
+			'notifications' => array(
+				'merchant' => array(
+					'event'             => GF_Chip_Renewal_Notifications::EVENT_FAILED,
+					'isActive'          => true,
+					'conditionalLogic'  => array(
+						'logicType' => 'all',
+						'rules'     => array(
+							array(
+								'fieldId'  => '1',
+								'operator' => 'is',
+								'value'    => 'yes',
+							),
+						),
+					),
+				),
+			),
+		);
+
+		$this->assertFalse(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				$form,
+				array( '1' => 'no' )
+			)
+		);
+
+		// And it DOES suppress the entry it was written for.
+		$this->assertTrue(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				$form,
+				array( '1' => 'yes' )
+			)
+		);
+	}
+
+	/**
+	 * A form with no notifications at all leaves the fallback in charge.
+	 */
+	public function test_no_notifications_configured_does_not_suppress(): void {
+		$this->assertFalse(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				array(),
+				array()
+			)
+		);
+
+		$this->assertFalse(
+			GF_Chip_Renewal_Notifications::has_active_notification(
+				GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				'not a form',
+				array()
+			)
+		);
+	}
+
+	/**
+	 * The send method actually consults the stand-down before mailing.
+	 *
+	 * The six tests above prove the predicate is correct; none of them proves
+	 * anybody calls it. Removing the guard from `maybe_send_dunning_email()`
+	 * left the whole suite green — which is exactly the double-send bug,
+	 * restored. This test is the wiring, and it must fail if the guard goes.
+	 */
+	public function test_the_send_consults_the_stand_down_before_mailing(): void {
+		$source = file_get_contents( __DIR__ . '/../../includes/class-gf-chip-renewal-notifications.php' );
+		$source = str_replace( "\r\n", "\n", $source );
+
+		$start = strpos( $source, 'public static function maybe_send_dunning_email' );
+		$this->assertNotFalse( $start, 'the send method must exist' );
+
+		$body = substr( $source, $start, 3000 );
+
+		$guard = strpos( $body, 'has_active_notification' );
+		$mail  = strpos( $body, 'wp_mail(' );
+
+		$this->assertNotFalse( $guard, 'the send must consult the merchant notification stand-down' );
+		$this->assertNotFalse( $mail, 'the send must still mail' );
+
+		$this->assertLessThan(
+			$mail,
+			$guard,
+			'the stand-down must be decided BEFORE wp_mail, or the email has already left'
+		);
+
+		$this->assertStringContainsString(
+			'self::EVENT_FAILED',
+			$body,
+			'the stand-down must ask about the failure event, which is the one the fallback covers'
+		);
+	}
+
+	/**
+	 * An operator's explicit send ignores the stand-down.
+	 *
+	 * "Send update-card link" is a deliberate act by support, not the automated
+	 * fallback. Suppressing it because the merchant happens to run their own
+	 * notification would make the button appear broken.
+	 */
+	public function test_an_explicit_send_is_not_suppressed(): void {
+		$source = file_get_contents( __DIR__ . '/../../includes/class-gf-chip-renewal-notifications.php' );
+		$source = str_replace( "\r\n", "\n", $source );
+
+		$start = strpos( $source, 'public static function maybe_send_dunning_email' );
+		$body  = substr( $source, $start, 3000 );
+
+		$guard_line = strpos( $body, 'has_active_notification' );
+		$line_start = strrpos( substr( $body, 0, $guard_line ), "\n" );
+		$guard_stmt = substr( $body, $line_start, 400 );
+
+		$this->assertStringContainsString(
+			'! $force',
+			$guard_stmt,
+			'the stand-down must be bypassed for an operator-initiated send'
+		);
+	}
+
+	// ---------------------------------------------------------------------
 	// Email content.
 	// ---------------------------------------------------------------------
 
@@ -597,6 +807,73 @@ class GF_Chip_RenewalNotificationsTest extends TestCase {
 			'GF_Chip_Renewal_Notifications::maybe_send_dunning_email( $entry_id, $retry_count )',
 			$source,
 			'the failure path must attempt a dunning email'
+		);
+	}
+
+	/**
+	 * The dunning email is attempted ONLY while retries remain, and a terminal
+	 * failure announces ONE event rather than two.
+	 *
+	 * The failure and the expiry are the same moment, so firing both meant a
+	 * merchant with a notification on each got two emails for one payment.
+	 * The built-in "update your card" email is deliberately skipped on that
+	 * path as well: the card-update link stops working the moment the
+	 * subscription is expired, so mailing one would hand the customer a dead
+	 * link. They were dunned on every earlier attempt, while action was still
+	 * possible.
+	 *
+	 * Anchored on the marker comment rather than on `if ( null === $next )`,
+	 * which appears twice in this method and would match the log_debug guard.
+	 */
+	public function test_terminal_failure_announces_the_expiry_only(): void {
+		$source = file_get_contents( __DIR__ . '/../../includes/class-gf-chip.php' );
+		$source = str_replace( "\r\n", "\n", $source );
+
+		$start = strpos( $source, 'private function handle_renewal_failure' );
+		$this->assertNotFalse( $start, 'handle_renewal_failure must exist' );
+
+		$body = substr( $source, $start, 8000 );
+
+		$exhausted_at = strpos( $body, 'The ladder is exhausted' );
+		$this->assertNotFalse( $exhausted_at, 'the exhausted branch must be marked' );
+
+		$send_at = strpos( $body, 'maybe_send_dunning_email( $entry_id, $retry_count )' );
+		$this->assertNotFalse( $send_at, 'the dunning send must exist' );
+
+		$this->assertLessThan(
+			$send_at,
+			$exhausted_at,
+			'the terminal branch must be handled before the dunning send, so the send cannot run on it'
+		);
+
+		$exhausted = substr( $body, $exhausted_at, $send_at - $exhausted_at );
+
+		$this->assertStringContainsString(
+			'GF_Chip_Renewal_Notifications::EVENT_EXPIRED',
+			$exhausted,
+			'a terminal failure must announce the expiry'
+		);
+
+		$this->assertStringNotContainsString(
+			'GF_Chip_Renewal_Notifications::EVENT_FAILED',
+			$exhausted,
+			'a terminal failure must not ALSO announce the failure — that is one email too many'
+		);
+
+		$this->assertStringNotContainsString(
+			'maybe_send_dunning_email',
+			$exhausted,
+			'the built-in email must not be sent once the ladder is exhausted — the link is already dead'
+		);
+
+		// The retry path still does both, so the guards above cannot be
+		// satisfied by deleting the work instead of gating it.
+		$retry_path = substr( $body, $send_at );
+
+		$this->assertStringContainsString(
+			'GF_Chip_Renewal_Notifications::EVENT_FAILED',
+			$retry_path,
+			'a non-terminal failure must still announce the failure event'
 		);
 	}
 
