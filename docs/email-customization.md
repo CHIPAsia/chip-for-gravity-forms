@@ -4,6 +4,11 @@ Everything here was verified against the plugin's own code and Gravity Forms
 core. Where a hook is a Gravity Forms hook rather than one of ours, that is
 stated, so you know who owns it.
 
+Two defects found while writing this are now fixed: the built-in email used to
+send unconditionally alongside a configured notification, and a terminal
+failure used to announce two events. Both produced two emails for one failed
+payment.
+
 ## What already exists (build in the UI, don't code)
 
 The plugin gives you a **merge tag**, not an email template:
@@ -28,34 +33,38 @@ notification on:
 So a dunning email with your own design is: one notification, event set to
 *Subscription Payment Failed*, body containing `{chip_update_card_link}`.
 
-### Read this before configuring that notification
+### The built-in email steps aside for yours
 
-The plugin sends a **built-in fallback email** on every failed renewal, and it
-does so unconditionally — it does not check whether you have configured a
-notification for the event. **Verified on a live install:** with a
-*Subscription Payment Failed* notification configured, one failed renewal
-produced **two** messages:
+The plugin sends a built-in fallback email so dunning works with no setup at
+all. When you configure a notification on *Subscription Payment Failed*, the
+built-in email **stands down** and yours is the only one the customer receives.
 
-```
-1. to=customer@example.com   Action needed: payment failed for your subscription
-2. to=probe@example.com      the configured notification
-```
+The stand-down is decided the way Gravity Forms itself decides whether a
+notification will send, so it holds in the cases that catch people out:
 
-So use one or the other:
+- a notification you have switched **off** does not suppress the built-in —
+  otherwise a merchant who parked their notification would leave the customer
+  with nothing
+- a notification whose **conditional logic** will not pass for this entry does
+  not suppress it either — the fallback exists for the entries nothing else
+  covers
 
-- Configure the notification and design it, or
-- Configure nothing and let the built-in email do the work.
+Pressing **Send update-card link** in the admin always sends, regardless. That
+is a deliberate act by support, not the automated fallback.
 
-If you need both — a designed customer email and an admin alert on the same
-event — put your customer-facing message on the plugin's built-in email and
-keep the admin one on a different event.
+## The end of the retry ladder
 
-There is a further consequence: a failure that exhausts the retry ladder fires
-**both** the failed and the expired event in the same run, so a notification on
-each sends twice. Make them distinct messages, not variations of one.
+When the last retry fails the subscription is **expired** in the same pass, and
+that is the only event announced — *Subscription Expired*. The failure event is
+not also fired, so a notification on each will not produce two emails for one
+payment.
 
-Both are worth fixing in the plugin — the fallback should stand down when a
-notification is configured. Documented here rather than silently worked around.
+The built-in email is not sent on that path either. The card-update link stops
+working the moment the subscription is expired, so an email carrying one would
+hand the customer a link that is already dead. Customers are dunned on every
+attempt *before* that, while action is still possible — so make the
+*Subscription Expired* notification the one that tells them the subscription
+has ended.
 
 ## When the customer saves a card on a failed renewal
 

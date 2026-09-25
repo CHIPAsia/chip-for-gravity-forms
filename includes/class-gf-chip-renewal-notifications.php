@@ -104,6 +104,53 @@ class GF_Chip_Renewal_Notifications {
 	}
 
 	/**
+	 * Whether Gravity Forms will send a notification for this event itself.
+	 *
+	 * The built-in email is a fallback, so it stands down when the merchant has
+	 * built their own — otherwise one failed payment produces two emails.
+	 *
+	 * Mirrors what Gravity Forms does before sending, rather than just counting
+	 * configured notifications. Both gates matter:
+	 *
+	 *  - `isActive`. A notification the merchant has switched off is not a
+	 *    reason to stay silent. `GFCommon::get_notifications()` does NOT filter
+	 *    on this, so reading it and stopping there would send the customer
+	 *    nothing at all when the merchant had merely parked their own.
+	 *  - conditional logic. A notification that will not pass its conditions
+	 *    never sends, so the fallback must still cover that entry. Core's own
+	 *    evaluator is called, not a reimplementation: it returns true when a
+	 *    notification carries no conditions.
+	 *
+	 * @param string $event The event about to be dispatched.
+	 * @param array  $form  The form the notification would be read from.
+	 * @param array  $entry The entry, for conditional logic.
+	 * @return bool
+	 */
+	public static function has_active_notification( $event, $form, $entry ) {
+		if ( ! is_array( $form ) ) {
+			return false;
+		}
+
+		foreach ( (array) rgar( $form, 'notifications' ) as $notification ) {
+			if ( (string) rgar( $notification, 'event' ) !== (string) $event ) {
+				continue;
+			}
+
+			if ( isset( $notification['isActive'] ) && ! $notification['isActive'] ) {
+				continue;
+			}
+
+			if ( ! GFCommon::evaluate_conditional_logic( rgar( $notification, 'conditionalLogic' ), $form, $entry ) ) {
+				continue;
+			}
+
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
 	 * The subject line for the fallback dunning email.
 	 *
 	 * @param string $site_name Site name.
@@ -307,11 +354,17 @@ class GF_Chip_Renewal_Notifications {
 	 * that can be updated — emailing a link to a cancelled subscription would
 	 * send the customer somewhere that tells them there is nothing to do.
 	 *
+	 * Stands down when the merchant has configured a Gravity Forms notification
+	 * that will fire for this event: two emails about one failed payment is
+	 * worse than none, and the merchant's own design wins. The stand-down is
+	 * skipped for an explicit send ($force), because an operator pressing
+	 * "Send update-card link" is asking for this email deliberately.
+	 *
 	 * @param int   $entry_id      Entry id.
 	 * @param int   $attempt_index Current attempt index.
 	 * @param bool  $force         Send even if already dunned for this attempt.
 	 * @param array $extra         Optional currency/amount overrides.
-	 * @return bool
+	 * @return bool Whether an email was sent.
 	 */
 	public static function maybe_send_dunning_email( $entry_id, $attempt_index, $force = false, $extra = array() ) {
 		$entry = GFAPI::get_entry( $entry_id );
@@ -323,6 +376,13 @@ class GF_Chip_Renewal_Notifications {
 		$entry = GF_Chip_Card_Update::hydrate( $entry );
 
 		if ( ! GF_Chip_Card_Update::can_offer_link( $entry ) ) {
+			return false;
+		}
+
+		// The merchant's notification takes priority over the built-in email.
+		// Checked before a link is issued, so a suppressed send leaves no
+		// trace behind it either.
+		if ( ! $force && self::has_active_notification( self::EVENT_FAILED, GFAPI::get_form( rgar( $entry, 'form_id' ) ), $entry ) ) {
 			return false;
 		}
 

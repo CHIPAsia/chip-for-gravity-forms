@@ -759,6 +759,73 @@ if ( ! class_exists( 'GFCommon' ) ) {
 
 			return current_user_can( 'gform_full_access' );
 		}
+
+		/**
+		 * Evaluates a conditional-logic block.
+		 *
+		 * The plugin calls this to decide whether a merchant's notification
+		 * will actually fire. Core returns TRUE for a block with no rules, and
+		 * that is the behaviour that matters most here: a notification with no
+		 * conditions is one that WILL send, so the built-in email must stand
+		 * down. A stub that defaulted to false would report the opposite and
+		 * let the double-send back in.
+		 *
+		 * The operators below cover what a notification's conditional logic
+		 * realistically uses; anything unrecognised evaluates false, matching
+		 * core's own default of "the rule did not match".
+		 *
+		 * @param array $logic Conditional logic block.
+		 * @param array $form  Form.
+		 * @param array $entry Entry.
+		 * @return bool
+		 */
+		public static function evaluate_conditional_logic( $logic, $form = null, $entry = null ) {
+			$rules = rgar( $logic, 'rules' );
+
+			if ( empty( $rules ) || ! is_array( $rules ) ) {
+				return true;
+			}
+
+			$matched = 0;
+
+			foreach ( $rules as $rule ) {
+				$field  = (string) rgar( $rule, 'fieldId' );
+				$actual = isset( $entry[ $field ] ) ? $entry[ $field ] : null;
+
+				if ( ! self::hermes_rule_matches( rgar( $rule, 'operator' ), $actual, rgar( $rule, 'value' ) ) ) {
+					continue;
+				}
+
+				++$matched;
+			}
+
+			return 'any' === rgar( $logic, 'logicType' ) ? $matched > 0 : $matched === count( $rules );
+		}
+
+		/**
+		 * Whether one conditional-logic rule matches.
+		 *
+		 * @param string $operator Operator.
+		 * @param mixed  $actual   Value from the entry.
+		 * @param mixed  $expected Value from the rule.
+		 * @return bool
+		 */
+		private static function hermes_rule_matches( $operator, $actual, $expected ) {
+			switch ( (string) $operator ) {
+				case 'is':
+					return (string) $actual === (string) $expected;
+				case 'isnot':
+					return (string) $actual !== (string) $expected;
+				case '>':
+					return (float) $actual > (float) $expected;
+				case '<':
+					return (float) $actual < (float) $expected;
+				case 'contains':
+					return false !== strpos( (string) $actual, (string) $expected );
+				default:
+					return false;
+			}
+		}
 	}
 }
 

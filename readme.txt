@@ -211,6 +211,12 @@ In the WordPress admin, open the entry for the subscription under **Forms → En
 
 Yes. The plugin adds three notification events you can attach a notification to: **Subscription Renewed**, **Subscription Payment Failed**, and **Subscription Expired**. It also provides the merge tag `{chip_update_card_link}`, which inserts a secure card-update link for that customer. The link is generated fresh each time a notification sends, so a link that has already been used is replaced by a working one.
 
+= Will customers get two emails if I write my own dunning notification? =
+
+No. The plugin sends a built-in dunning email so recovery works with no setup, and that email steps aside as soon as you configure a notification on **Subscription Payment Failed** — yours is then the only one the customer receives. A notification you have switched off, or one whose conditional logic does not pass for that entry, does not count as a replacement: the built-in email still covers those customers. Re-sending the link from the admin always sends, since that is a deliberate action.
+
+When the retry ladder is exhausted the subscription is marked **Expired** and only that event is announced, so a notification on both **Subscription Payment Failed** and **Subscription Expired** will not double up. The built-in email is not sent at that point either — an update-card link stops working once the subscription is expired, so customers are dunned on the attempts before it instead.
+
 = Are subscription payments refundable? =
 
 Subscription charges appear in the entry's payment transactions and can be refunded like any other payment, subject to CHIP's refund policy. Refunds do not cancel the subscription — cancel it separately if you also want charges to stop.

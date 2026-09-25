@@ -2483,21 +2483,19 @@ class GF_Chip extends GFPaymentAddOn {
 			'error'
 		);
 
-		// Tell the customer. One email per attempt position, so a cron that
-		// runs twice inside a retry window does not send two identical
-		// messages. Sent only to the entry's own address.
-		GF_Chip_Renewal_Notifications::maybe_send_dunning_email( $entry_id, $retry_count );
-
-		$this->post_payment_action(
-			$entry,
-			array(
-				'type'           => GF_Chip_Renewal_Notifications::EVENT_FAILED,
-				'amount'         => rgar( $plan, 'amount' ),
-				'transaction_id' => $purchase,
-				'payment_status' => 'Failed',
-			)
-		);
-
+		// The ladder is exhausted, so the subscription ends in this same pass.
+		//
+		// ONE event is announced here, not two. The failure and the expiry are
+		// the same moment, and firing both means two emails for one payment --
+		// a merchant who configured a notification on each would double-message
+		// the customer. The expiry is what has actually happened, so it is the
+		// expiry that gets announced.
+		//
+		// The built-in "update your card" email is deliberately not sent on this
+		// path either. The card-update link stops working the moment the
+		// subscription is expired, so mailing one here hands the customer a link
+		// that is already dead by the time they click it. They were dunned on
+		// every earlier attempt, while action was still possible.
 		if ( null === $next ) {
 			gform_update_meta( $entry_id, 'chip_sub_status', 'expired', $form_id );
 			gform_update_meta( $entry_id, 'chip_sub_next_payment', '', $form_id );
@@ -2523,6 +2521,22 @@ class GF_Chip extends GFPaymentAddOn {
 				'note'   => '',
 			);
 		}
+
+		// There are retries left, so the customer still has something to do.
+		// One email per attempt position, so a cron that runs twice inside a
+		// retry window does not send two identical messages. Sent only to the
+		// entry's own address.
+		GF_Chip_Renewal_Notifications::maybe_send_dunning_email( $entry_id, $retry_count );
+
+		$this->post_payment_action(
+			$entry,
+			array(
+				'type'           => GF_Chip_Renewal_Notifications::EVENT_FAILED,
+				'amount'         => rgar( $plan, 'amount' ),
+				'transaction_id' => $purchase,
+				'payment_status' => 'Failed',
+			)
+		);
 
 		gform_update_meta( $entry_id, 'chip_sub_status', 'on-hold', $form_id );
 		gform_update_meta( $entry_id, 'chip_sub_next_payment', $next, $form_id );
