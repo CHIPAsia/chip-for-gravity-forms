@@ -95,20 +95,29 @@ class GF_Chip_AdminRetryTest extends TestCase {
 
 	/**
 	 * The subscriptions page renders a real link, not a disabled button.
+	 *
+	 * The retry link lives on the list table now — the page class hands
+	 * rendering to it — so the assertion follows it there. Checking the page
+	 * class alone would pass while the button was gone.
 	 */
 	public function test_page_renders_a_link_not_a_disabled_button(): void {
-		$src = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php' );
+		$table = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-table.php' );
 
-		$this->assertStringNotContainsString(
-			'Retry on demand is not enabled in this release.',
-			$src,
-			'the placeholder must be gone'
-		);
 		$this->assertStringContainsString(
 			'GF_Chip_Renewal_Notifications::admin_retry_url',
-			$src,
-			'the button must point at the real action'
+			$table,
+			'the retry button must point at the real action'
 		);
+
+		foreach ( array( 'includes/class-gf-chip-subscriptions-page.php', 'includes/class-gf-chip-subscriptions-table.php' ) as $file ) {
+			$src = file_get_contents( GF_CHIP_PLUGIN_PATH . $file );
+
+			$this->assertStringNotContainsString(
+				'Retry on demand is not enabled in this release.',
+				$src,
+				'the placeholder must be gone from ' . $file
+			);
+		}
 	}
 
 	/**

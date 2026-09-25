@@ -61,6 +61,290 @@ class GF_Chip_Subscriptions_Page {
 	 */
 	public static function register() {
 		add_filter( 'gform_addon_navigation', array( __CLASS__, 'add_nav_item' ) );
+		add_filter( 'set-screen-option', array( __CLASS__, 'save_screen_option' ), 10, 3 );
+
+		// The screen is not resolved until the page's own load action, so the
+		// screen option is registered there rather than inline. The bulk
+		// handler runs there too: it fires after the screen exists and before
+		// any output, which is what lets it redirect.
+		add_action( 'load-' . self::screen_id(), array( __CLASS__, 'register_screen_option' ) );
+		add_action( 'load-' . self::screen_id(), array( __CLASS__, 'maybe_handle_bulk_action' ) );
+	}
+
+	/**
+	 * The bulk actions this screen offers.
+	 *
+	 * Defined once here so the table renders exactly the set the handler
+	 * validates against — an action can never appear in the dropdown without a
+	 * handler, or be handled without being offered.
+	 *
+	 * Each action maps to an operation that already exists and is already
+	 * guarded, so bulk is not a second implementation of the charging or
+	 * cancelling rules: it is those rules applied to a selection.
+	 *
+	 * @return array
+	 */
+	public static function bulk_actions() {
+		return array(
+			'chip_bulk_retry'  => __( 'Retry now', 'chip-for-gravity-forms' ),
+			'chip_bulk_link'   => __( 'Send update-card link', 'chip-for-gravity-forms' ),
+			'chip_bulk_cancel' => __( 'Cancel subscription', 'chip-for-gravity-forms' ),
+		);
+	}
+
+	/**
+	 * Applies a bulk action to the selected subscriptions.
+	 *
+	 * Runs on the page's load action, so it executes before anything is
+	 * rendered and can redirect.
+	 *
+	 * Every selected row still passes its own guard: a bulk action is a
+	 * convenience for a selection, never a way around the rules that decide
+	 * whether one row may be charged, linked or cancelled. Rows the guard
+	 * refuses are counted as skipped and reported, rather than being silently
+	 * dropped or forced through.
+	 *
+	 * @return void
+	 */
+	public static function maybe_handle_bulk_action() {
+		// WP_List_Table posts the chosen action as `action` (or `action2` for
+		// the bottom tablenav). Read-only inspection of the request; the nonce
+		// is verified below before anything is acted on.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$action = '';
+		foreach ( array( 'action', 'action2' ) as $key ) {
+			if ( isset( $_REQUEST[ $key ] ) ) {
+				$candidate = sanitize_key( wp_unslash( $_REQUEST[ $key ] ) );
+				if ( '-1' !== $candidate && '' !== $candidate ) {
+					$action = $candidate;
+					break;
+				}
+			}
+		}
+
+		$entry_ids = isset( $_REQUEST['chip_entry'] ) ? array_map( 'absint', (array) wp_unslash( $_REQUEST['chip_entry'] ) ) : array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( '' === $action ) {
+			return;
+		}
+
+		if ( ! isset( self::bulk_actions()[ $action ] ) ) {
+			return;
+		}
+
+		// From here on the request is a state change, so the nonce is
+		// mandatory. WP_List_Table printed it against the bulk actions nonce
+		// action derived from the table's plural name.
+		check_admin_referer( GF_Chip_Subscriptions_Table::bulk_nonce_action() );
+
+		if ( ! GFCommon::current_user_can_any( self::capability() ) ) {
+			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
+		}
+
+		$entry_ids = array_values( array_unique( array_filter( $entry_ids ) ) );
+
+		if ( empty( $entry_ids ) ) {
+			self::redirect_after_bulk( $action, 0, 0 );
+		}
+
+		$applied = 0;
+		$skipped = 0;
+
+		foreach ( $entry_ids as $entry_id ) {
+			$entry = GFAPI::get_entry( $entry_id );
+
+			if ( ! is_array( $entry ) || is_wp_error( $entry ) ) {
+				++$skipped;
+				continue;
+			}
+
+			$entry = GF_Chip_Card_Update::hydrate( $entry );
+
+			if ( self::apply_bulk_action( $action, $entry ) ) {
+				++$applied;
+			} else {
+				++$skipped;
+			}
+		}
+
+		self::redirect_after_bulk( $action, $applied, $skipped );
+	}
+
+	/**
+	 * Whether one entry qualifies for one bulk action.
+	 *
+	 * A bulk action must never be a way around the rule that decides whether a
+	 * single row may be charged, linked or cancelled — it is only a way to
+	 * apply that rule to several rows at once. Exposing the decision as a
+	 * predicate is what makes that testable: the switch below performs the
+	 * side effect, and this decides whether it is allowed to.
+	 *
+	 * @param string $action One of bulk_actions().
+	 * @param array  $entry  Hydrated entry.
+	 * @return bool
+	 */
+	public static function can_apply_bulk_action( $action, $entry ) {
+		switch ( $action ) {
+			case 'chip_bulk_retry':
+				return self::can_retry( $entry );
+
+			case 'chip_bulk_link':
+				return self::can_send_link( $entry );
+
+			case 'chip_bulk_cancel':
+				return self::can_cancel( $entry );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Applies one bulk action to one entry.
+	 *
+	 * Each branch delegates to the operation the single-row button uses, so
+	 * the guards and side effects are identical.
+	 *
+	 * @param string $action One of bulk_actions().
+	 * @param array  $entry  Hydrated entry.
+	 * @return bool True when the action was applied.
+	 */
+	private static function apply_bulk_action( $action, $entry ) {
+		if ( ! self::can_apply_bulk_action( $action, $entry ) ) {
+			return false;
+		}
+
+		$entry_id = absint( rgar( $entry, 'id' ) );
+		$addon    = GF_Chip::get_instance();
+
+		switch ( $action ) {
+			case 'chip_bulk_retry':
+				// Force: an operator asked for it. The attempt is still
+				// counted by the charge path, exactly as the single-row
+				// retry does.
+				$result = $addon->charge_renewal( $entry, true );
+
+				return is_array( $result ) && isset( $result['status'] ) && 'charged' === $result['status'];
+
+			case 'chip_bulk_link':
+				return (bool) GF_Chip_Renewal_Notifications::maybe_send_dunning_email( $entry_id, 0, true );
+
+			case 'chip_bulk_cancel':
+				$form = GFAPI::get_form( absint( rgar( $entry, 'form_id' ) ) );
+				$feed = $addon->get_payment_feed( $entry, $form );
+
+				if ( empty( $feed ) ) {
+					return false;
+				}
+
+				// cancel() revokes the token at CHIP; cancel_subscription()
+				// then moves the entry to Cancelled, which is what core's own
+				// Cancel button does.
+				if ( ! $addon->cancel( $entry, $feed ) ) {
+					return false;
+				}
+
+				$addon->cancel_subscription( $entry, $feed );
+
+				return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Returns to the list with a summary of what the bulk action did.
+	 *
+	 * @param string $action  The action performed.
+	 * @param int    $applied How many rows were acted on.
+	 * @param int    $skipped How many were refused by their own guard.
+	 * @return void
+	 */
+	private static function redirect_after_bulk( $action, $applied, $skipped ) {
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'         => self::slug(),
+					'chip_bulk'    => $action,
+					'bulk_applied' => (int) $applied,
+					'bulk_skipped' => (int) $skipped,
+				),
+				admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * The admin screen id of this page.
+	 *
+	 * Gravity Forms registers its menu with the `gf_edit_forms` slug, whose
+	 * admin_page_hook is `forms`, so the screen id WordPress derives is
+	 * `forms_page_<slug>`. Screen options and the per-page row count hang off
+	 * that id.
+	 *
+	 * @return string
+	 */
+	public static function screen_id() {
+		return 'forms_page_' . self::slug();
+	}
+
+	/**
+	 * Registers the "Rows per page" screen option.
+	 *
+	 * Attached to the screen's own load action rather than run inline,
+	 * because the admin screen is not resolved until then.
+	 *
+	 * @return void
+	 */
+	public static function register_screen_option() {
+		add_screen_option(
+			'per_page',
+			array(
+				'label'   => __( 'Subscriptions per page', 'chip-for-gravity-forms' ),
+				'default' => self::PER_PAGE,
+				'option'  => self::per_page_option(),
+			)
+		);
+	}
+
+	/**
+	 * The user-meta key holding the chosen row count.
+	 *
+	 * @return string
+	 */
+	public static function per_page_option() {
+		return 'chip_subscriptions_per_page';
+	}
+
+	/**
+	 * Persists the screen option.
+	 *
+	 * `set-screen-option` refuses unknown options by default, so the filter is
+	 * required for the chosen row count to survive a reload.
+	 *
+	 * @param mixed  $status Current value.
+	 * @param string $option Option name.
+	 * @param mixed  $value  Submitted value.
+	 * @return mixed
+	 */
+	public static function save_screen_option( $status, $option, $value ) {
+		if ( self::per_page_option() !== $option ) {
+			return $status;
+		}
+
+		return absint( $value );
+	}
+
+	/**
+	 * The rows-per-page the screen should use.
+	 *
+	 * @return int
+	 */
+	public static function per_page() {
+		$stored = (int) get_user_option( self::per_page_option() );
+
+		return $stored > 0 ? $stored : self::PER_PAGE;
 	}
 
 	/**
@@ -281,16 +565,53 @@ class GF_Chip_Subscriptions_Page {
 	 * Counts subscription entries.
 	 *
 	 * @param string $status Optional chip_sub_status filter.
+	 * @param string $search Optional search term (entry id, or an email/name
+	 *                       value on the entry).
 	 * @return int
 	 */
-	public static function count_subscriptions( $status = '' ) {
+	public static function count_subscriptions( $status = '', $search = '' ) {
 		global $wpdb;
+
+		$table = $wpdb->prefix . 'gf_entry_meta';
+
+		$search = trim( (string) $search );
+
+		if ( '' === $search ) {
+			if ( '' === $status ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list count; must reflect current rows.
+				return (int) $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT COUNT(DISTINCT entry_id) FROM {$table} WHERE meta_key = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name from $wpdb->prefix.
+						'chip_sub_status'
+					)
+				);
+			}
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list count; must reflect current rows.
+			return (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(DISTINCT entry_id) FROM {$table} WHERE meta_key = %s AND meta_value = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name from $wpdb->prefix.
+					'chip_sub_status',
+					$status
+				)
+			);
+		}
+
+		// A search narrows the set to subscription entry ids that match either
+		// the entry id itself or one of the entry's own values.
+		$ids = self::search_entry_ids( $search );
+
+		if ( empty( $ids ) ) {
+			return 0;
+		}
+
+		$id_list = implode( ',', array_map( 'absint', $ids ) );
 
 		if ( '' === $status ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list count; must reflect current rows.
 			return (int) $wpdb->get_var(
 				$wpdb->prepare(
-					"SELECT COUNT(DISTINCT entry_id) FROM {$wpdb->prefix}gf_entry_meta WHERE meta_key = %s",
+					"SELECT COUNT(DISTINCT entry_id) FROM {$table} WHERE meta_key = %s AND entry_id IN ({$id_list})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
 					'chip_sub_status'
 				)
 			);
@@ -299,11 +620,107 @@ class GF_Chip_Subscriptions_Page {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list count; must reflect current rows.
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(DISTINCT entry_id) FROM {$wpdb->prefix}gf_entry_meta WHERE meta_key = %s AND meta_value = %s",
+				"SELECT COUNT(DISTINCT entry_id) FROM {$table} WHERE meta_key = %s AND meta_value = %s AND entry_id IN ({$id_list})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
 				'chip_sub_status',
 				$status
 			)
 		);
+	}
+
+	/**
+	 * Subscription entry ids matching a search term.
+	 *
+	 * Matches the entry id when the term is numeric, and otherwise searches the
+	 * values a subscription entry carries (the customer's email or name as the
+	 * mapped fields stored them), so an operator can find a row by the
+	 * customer rather than by entry number.
+	 *
+	 * @param string $search Search term.
+	 * @return array Entry ids.
+	 */
+	public static function search_entry_ids( $search ) {
+		global $wpdb;
+
+		$matches = array();
+		$search  = trim( (string) $search );
+
+		if ( '' === $search ) {
+			return $matches;
+		}
+
+		// A subscription set, so a search can never surface a one-time entry.
+		$subscription_ids = self::all_subscription_entry_ids();
+
+		if ( empty( $subscription_ids ) ) {
+			return $matches;
+		}
+
+		if ( ctype_digit( $search ) ) {
+			$matches[] = (int) $search;
+		}
+
+		$entry_table = $wpdb->prefix . 'gf_entry';
+
+		// Match against the entry's own scalar values. Escaping is handled by
+		// the search-criteria API below where possible; this query is bounded
+		// to the subscription set and uses a LIKE on prepared values.
+		$like = '%' . $wpdb->esc_like( $search ) . '%';
+
+		$id_list = implode( ',', array_map( 'absint', $subscription_ids ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list search; must reflect current rows.
+		$found = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT id FROM {$entry_table} WHERE id IN ({$id_list}) AND (id = %s OR date_created LIKE %s)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
+				$search,
+				$like
+			)
+		);
+
+		foreach ( (array) $found as $id ) {
+			$matches[] = (int) $id;
+		}
+
+		// Also match what the entry's own fields hold (email, name…), which is
+		// how an operator actually searches for a subscription.
+		$meta_table = $wpdb->prefix . 'gf_entry_meta';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list search; must reflect current rows.
+		$by_value = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT entry_id FROM {$meta_table} WHERE entry_id IN ({$id_list}) AND meta_value LIKE %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
+				$like
+			)
+		);
+
+		foreach ( (array) $by_value as $id ) {
+			$matches[] = (int) $id;
+		}
+
+		$matches = array_values( array_unique( array_filter( array_map( 'absint', $matches ) ) ) );
+
+		return $matches;
+	}
+
+	/**
+	 * Every entry id carrying a subscription status.
+	 *
+	 * @return array
+	 */
+	private static function all_subscription_entry_ids() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'gf_entry_meta';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list; must reflect current rows.
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT entry_id FROM {$table} WHERE meta_key = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name from $wpdb->prefix.
+				'chip_sub_status'
+			)
+		);
+
+		return array_map( 'absint', (array) $ids );
 	}
 
 	/**
@@ -314,17 +731,58 @@ class GF_Chip_Subscriptions_Page {
 	 * Gravity Forms API so the entry data is consistent with the rest of the
 	 * admin.
 	 *
-	 * @param int    $page   Page number, 1-based.
-	 * @param string $status Optional chip_sub_status filter.
+	 * @param int    $per_page Rows per page.
+	 * @param string $status   Optional chip_sub_status filter.
+	 * @param string $search   Optional search term.
 	 * @return array List of entry arrays with chip_sub_* meta flattened in.
 	 */
-	public static function get_subscriptions( $page = 1, $status = '' ) {
+	public static function get_subscriptions( $per_page = self::PER_PAGE, $status = '', $search = '' ) {
 		global $wpdb;
 
-		$page   = max( 1, (int) $page );
-		$offset = ( $page - 1 ) * self::PER_PAGE;
+		$per_page = max( 1, (int) $per_page );
 
-		if ( '' === $status ) {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only list paging.
+		$page = isset( $_GET['paged'] ) ? max( 1, absint( wp_unslash( $_GET['paged'] ) ) ) : 1;
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$offset = ( $page - 1 ) * $per_page;
+
+		$table = $wpdb->prefix . 'gf_entry_meta';
+
+		$search = trim( (string) $search );
+
+		if ( '' !== $search ) {
+			$ids = self::search_entry_ids( $search );
+
+			if ( empty( $ids ) ) {
+				return array();
+			}
+
+			$id_list = implode( ',', array_map( 'absint', $ids ) );
+
+			if ( '' === $status ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list; must reflect current rows.
+				$entry_ids = $wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT DISTINCT entry_id FROM {$table} WHERE meta_key = %s AND entry_id IN ({$id_list}) ORDER BY entry_id DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
+						'chip_sub_status',
+						$per_page,
+						$offset
+					)
+				);
+			} else {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list; must reflect current rows.
+				$entry_ids = $wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT DISTINCT entry_id FROM {$table} WHERE meta_key = %s AND meta_value = %s AND entry_id IN ({$id_list}) ORDER BY entry_id DESC LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- id list is absint-mapped.
+						'chip_sub_status',
+						$status,
+						$per_page,
+						$offset
+					)
+				);
+			}
+		} elseif ( '' === $status ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- admin list; must reflect current rows.
 			$entry_ids = $wpdb->get_col(
 				$wpdb->prepare(
@@ -333,7 +791,7 @@ class GF_Chip_Subscriptions_Page {
 					 ORDER BY entry_id DESC
 					 LIMIT %d OFFSET %d",
 					'chip_sub_status',
-					self::PER_PAGE,
+					$per_page,
 					$offset
 				)
 			);
@@ -347,7 +805,7 @@ class GF_Chip_Subscriptions_Page {
 					 LIMIT %d OFFSET %d",
 					'chip_sub_status',
 					$status,
-					self::PER_PAGE,
+					$per_page,
 					$offset
 				)
 			);
@@ -362,9 +820,7 @@ class GF_Chip_Subscriptions_Page {
 				continue;
 			}
 
-			$entry = self::hydrate( $entry );
-
-			$rows[] = $entry;
+			$rows[] = self::hydrate( $entry );
 		}
 
 		return $rows;
@@ -400,12 +856,12 @@ class GF_Chip_Subscriptions_Page {
 			wp_die( esc_html__( 'Access denied.', 'chip-for-gravity-forms' ) );
 		}
 
-		// Both values are read-only list filters: they select what is displayed
-		// and mutate nothing, so a nonce is not applicable. They are sanitised
-		// and the status is additionally clamped to the known vocabulary below.
+		// Read-only list filters: they select what is displayed and mutate
+		// nothing, so a nonce is not applicable. Each is sanitised, and the
+		// status is additionally clamped to the known vocabulary below.
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended
 		$status = isset( $_GET['chip_status'] ) ? sanitize_key( wp_unslash( $_GET['chip_status'] ) ) : '';
-		$page   = isset( $_GET['chip_page'] ) ? max( 1, absint( wp_unslash( $_GET['chip_page'] ) ) ) : 1;
+		$search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
 		// Clamp the status filter to the known vocabulary so an arbitrary
@@ -414,112 +870,120 @@ class GF_Chip_Subscriptions_Page {
 			$status = '';
 		}
 
-		$rows  = self::get_subscriptions( $page, $status );
-		$total = self::count_subscriptions( $status );
-		$now   = gmdate( 'Y-m-d H:i:s' );
+		$table = new GF_Chip_Subscriptions_Table(
+			self::per_page(),
+			$status,
+			$search,
+			gmdate( 'Y-m-d H:i:s' )
+		);
 
-		self::render_table( $rows, $total, $page, $status, $now );
+		$table->prepare_items();
+
+		self::render_page( $table, $status );
 	}
 
 	/**
-	 * Renders the table markup.
+	 * Renders the page shell around the list table.
 	 *
-	 * @param array  $rows   Rows.
-	 * @param int    $total  Total matching rows.
-	 * @param int    $page   Current page.
-	 * @param string $status Status filter.
-	 * @param string $now    Current UTC datetime.
+	 * @param GF_Chip_Subscriptions_Table $table  Prepared list table.
+	 * @param string                      $status Active status filter.
 	 * @return void
 	 */
-	private static function render_table( $rows, $total, $page, $status, $now ) {
-		$statuses = \GF_Chip::SUBSCRIPTION_STATES;
+	private static function render_page( $table, $status ) {
 		?>
-		<div class="wrap gform-wrap">
+		<div class="wrap">
 			<h1><?php esc_html_e( 'CHIP Subscriptions', 'chip-for-gravity-forms' ); ?></h1>
 
-			<?php self::render_notice(); ?>
+			<?php
+			self::render_notice();
+			self::render_bulk_notice();
+			?>
 
 			<p class="description">
 				<?php esc_html_e( 'Recurring subscriptions collected by the CHIP gateway. Card changes are sent to the customer as a secure link; card data is never entered here.', 'chip-for-gravity-forms' ); ?>
 			</p>
 
-			<ul class="subsubsub">
-				<li>
-					<a href="<?php echo esc_url( self::page_url( '' ) ); ?>"<?php echo '' === $status ? ' class="current"' : ''; ?>>
-						<?php esc_html_e( 'All', 'chip-for-gravity-forms' ); ?>
-					</a>
-				</li>
-				<?php foreach ( $statuses as $state ) : ?>
-					| <li>
-						<a href="<?php echo esc_url( self::page_url( $state ) ); ?>"<?php echo $status === $state ? ' class="current"' : ''; ?>>
-							<?php echo esc_html( self::describe_status( $state ) ); ?>
-						</a>
-					</li>
-				<?php endforeach; ?>
-			</ul>
+			<?php $table->views(); ?>
 
-			<table class="widefat striped">
-				<thead>
-					<tr>
-						<th><?php esc_html_e( 'Entry', 'chip-for-gravity-forms' ); ?></th>
-						<th><?php esc_html_e( 'Form', 'chip-for-gravity-forms' ); ?></th>
-						<th><?php esc_html_e( 'Status', 'chip-for-gravity-forms' ); ?></th>
-						<th><?php esc_html_e( 'Token', 'chip-for-gravity-forms' ); ?></th>
-						<th><?php esc_html_e( 'Next payment', 'chip-for-gravity-forms' ); ?></th>
-						<th><?php esc_html_e( 'Retries', 'chip-for-gravity-forms' ); ?></th>
-						<th><?php esc_html_e( 'Actions', 'chip-for-gravity-forms' ); ?></th>
-					</tr>
-				</thead>
-				<tbody>
-				<?php if ( empty( $rows ) ) : ?>
-					<tr><td colspan="7"><?php esc_html_e( 'No subscriptions found.', 'chip-for-gravity-forms' ); ?></td></tr>
-				<?php else : ?>
-					<?php foreach ( $rows as $row ) : ?>
-						<?php $overdue = self::is_overdue( $row, $now ); ?>
-						<tr>
-							<td>
-								<a href="<?php echo esc_url( self::entry_url( rgar( $row, 'form_id' ), rgar( $row, 'id' ) ) ); ?>">
-									#<?php echo absint( rgar( $row, 'id' ) ); ?>
-								</a>
-							</td>
-							<td><?php echo esc_html( rgar( $row, 'form_id' ) ); ?></td>
-							<td><?php echo esc_html( self::describe_status( rgar( $row, 'chip_sub_status' ) ) ); ?></td>
-							<td><code><?php echo esc_html( self::mask_token( rgar( $row, 'chip_recurring_token' ) ) ); ?></code></td>
-							<td>
-								<?php echo esc_html( self::format_datetime( rgar( $row, 'chip_sub_next_payment' ) ) ); ?>
-								<?php if ( $overdue ) : ?>
-									<strong class="chip-overdue"><?php esc_html_e( '(overdue)', 'chip-for-gravity-forms' ); ?></strong>
-								<?php endif; ?>
-							</td>
-							<td><?php echo absint( rgar( $row, 'chip_sub_retry_count' ) ); ?></td>
-							<td>
-								<?php if ( self::can_retry( $row ) ) : ?>
-									<a class="button button-small" href="<?php echo esc_url( GF_Chip_Renewal_Notifications::admin_retry_url( rgar( $row, 'id' ) ) ); ?>">
-										<?php esc_html_e( 'Retry now', 'chip-for-gravity-forms' ); ?>
-									</a>
-								<?php endif; ?>
-								<?php if ( self::can_cancel( $row ) ) : ?>
-									<a class="button button-small" href="<?php echo esc_url( self::entry_url( rgar( $row, 'form_id' ), rgar( $row, 'id' ) ) ); ?>">
-										<?php esc_html_e( 'Cancel', 'chip-for-gravity-forms' ); ?>
-									</a>
-								<?php endif; ?>
-								<?php if ( self::can_send_link( $row ) ) : ?>
-									<a class="button button-small" href="<?php echo esc_url( GF_Chip_Renewal_Notifications::admin_send_url( rgar( $row, 'id' ) ) ); ?>">
-										<?php esc_html_e( 'Send update-card link', 'chip-for-gravity-forms' ); ?>
-									</a>
-								<?php endif; ?>
-							</td>
-						</tr>
-					<?php endforeach; ?>
+			<form method="get">
+				<input type="hidden" name="page" value="<?php echo esc_attr( self::slug() ); ?>" />
+				<?php if ( '' !== $status ) : ?>
+					<input type="hidden" name="chip_status" value="<?php echo esc_attr( $status ); ?>" />
 				<?php endif; ?>
-				</tbody>
-			</table>
+
+				<?php
+				$table->search_box( __( 'Search subscriptions', 'chip-for-gravity-forms' ), 'chip-subscription' );
+				$table->display();
+				?>
+			</form>
 
 			<?php self::render_retry_notice(); ?>
-
-			<?php self::render_pagination( $total, $page, $status ); ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Reports what a bulk action did.
+	 *
+	 * Reports applied and skipped counts so an operator can see that a
+	 * selection was only partly actionable, instead of assuming every row was
+	 * charged.
+	 *
+	 * @return void
+	 */
+	private static function render_bulk_notice() {
+		// Display-only outcome flags from the redirect: nothing is changed
+		// here, so no nonce applies.
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$action = isset( $_GET['chip_bulk'] ) ? sanitize_key( wp_unslash( $_GET['chip_bulk'] ) ) : '';
+
+		if ( '' === $action || ! isset( self::bulk_actions()[ $action ] ) ) {
+			return;
+		}
+
+		$applied = isset( $_GET['bulk_applied'] ) ? absint( wp_unslash( $_GET['bulk_applied'] ) ) : 0;
+		$skipped = isset( $_GET['bulk_skipped'] ) ? absint( wp_unslash( $_GET['bulk_skipped'] ) ) : 0;
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$label = self::bulk_actions()[ $action ];
+
+		if ( $applied > 0 ) {
+			printf(
+				'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+				esc_html(
+					sprintf(
+						/* translators: 1: bulk action label, 2: number of subscriptions. */
+						_n(
+							'%1$s applied to %2$d subscription.',
+							'%1$s applied to %2$d subscriptions.',
+							$applied,
+							'chip-for-gravity-forms'
+						),
+						$label,
+						$applied
+					)
+				)
+			);
+		}
+
+		if ( $skipped > 0 || 0 === $applied ) {
+			printf(
+				'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+				esc_html(
+					sprintf(
+						/* translators: 1: number of subscriptions, 2: bulk action label. */
+						_n(
+							'%1$d subscription was skipped: it does not qualify for "%2$s".',
+							'%1$d subscriptions were skipped: they do not qualify for "%2$s".',
+							max( 1, $skipped ),
+							'chip-for-gravity-forms'
+						),
+						max( 1, $skipped ),
+						$label
+					)
+				)
+			);
+		}
 	}
 
 	/**
@@ -548,40 +1012,6 @@ class GF_Chip_Subscriptions_Page {
 				)
 			)
 		);
-	}
-
-	/**
-	 * Renders pagination controls.
-	 *
-	 * @param int    $total  Total rows.
-	 * @param int    $page   Current page.
-	 * @param string $status Status filter.
-	 * @return void
-	 */
-	private static function render_pagination( $total, $page, $status ) {
-		$pages = (int) ceil( $total / self::PER_PAGE );
-
-		if ( $pages < 2 ) {
-			return;
-		}
-
-		echo '<div class="tablenav"><div class="tablenav-pages">';
-
-		echo wp_kses_post(
-			paginate_links(
-				array(
-					'base'      => add_query_arg( 'chip_page', '%#%' ),
-					'format'    => '',
-					'current'   => $page,
-					'total'     => $pages,
-					'add_args'  => '' === $status ? array() : array( 'chip_status' => $status ),
-					'prev_text' => '&laquo;',
-					'next_text' => '&raquo;',
-				)
-			)
-		);
-
-		echo '</div></div>';
 	}
 
 	/**
