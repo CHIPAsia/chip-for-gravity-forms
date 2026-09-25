@@ -1039,12 +1039,205 @@ if ( ! class_exists( 'GF_Chip' ) ) {
 	require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip.php';
 }
 
+/*
+ * WP_List_Table stub.
+ *
+ * The harness runs against a fake ABSPATH that has no wp-admin tree, so the
+ * real class is absent. The subscriptions list table extends it and calls a
+ * handful of its members, so those need to exist for the class to load.
+ *
+ * The stub is deliberately faithful to the parts the plugin relies on rather
+ * than convenient: `$plural` is stored exactly as core stores it (sanitized
+ * via sanitize_key) because the bulk nonce action is derived from it, and
+ * `$_args` is populated the same way, so a test that asserts the nonce action
+ * is asserting what core would really have produced.
+ */
+if ( ! class_exists( 'WP_List_Table' ) ) {
+	/**
+	 * Minimal stand-in for core's WP_List_Table.
+	 */
+	class WP_List_Table {
+
+		/**
+		 * The screen the table is for.
+		 *
+		 * @var object|null
+		 */
+		public $screen = null;
+
+		/**
+		 * Rows.
+		 *
+		 * @var array
+		 */
+		public $items = array();
+
+		/**
+		 * Column headers, in core's order.
+		 *
+		 * @var array
+		 */
+		public $_column_headers = array();
+
+		/**
+		 * Table arguments: singular, plural, ajax, screen.
+		 *
+		 * @var array
+		 */
+		public $_args = array();
+
+		/**
+		 * Registered bulk actions, resolved lazily by core.
+		 *
+		 * @var array|null
+		 */
+		public $_actions = null;
+
+		/**
+		 * Pagination state.
+		 *
+		 * @var array
+		 */
+		public $_pagination_args = array();
+
+		/**
+		 * Constructor.
+		 *
+		 * @param array $args Table arguments.
+		 */
+		public function __construct( $args = array() ) {
+			$args = array_merge(
+				array(
+					'plural'   => '',
+					'singular' => '',
+					'ajax'     => false,
+					'screen'   => null,
+				),
+				$args
+			);
+
+			if ( ! $args['plural'] ) {
+				$args['plural'] = '';
+			}
+
+			// Core lowercases and strips everything outside [a-z0-9_-]. Done
+			// inline rather than via sanitize_key() so the stub carries no
+			// WordPress function dependency: the value is what the bulk nonce
+			// action is derived from, so it has to be exactly what core
+			// produces, and a WordPress function may not exist in this test
+			// run.
+			$args['plural']   = $this->sanitize_key_stub( $args['plural'] );
+			$args['singular'] = $this->sanitize_key_stub( $args['singular'] );
+
+			$this->_args = $args;
+		}
+
+		/**
+		 * Reproduces core's sanitize_key().
+		 *
+		 * @param string $key Key.
+		 * @return string
+		 */
+		private function sanitize_key_stub( $key ) {
+			return strtolower( preg_replace( '/[^a-zA-Z0-9_\-]/', '', (string) $key ) );
+		}
+
+		/**
+		 * Columns, overridden by the subclass.
+		 *
+		 * @return array
+		 */
+		public function get_columns() {
+			return array();
+		}
+
+		/**
+		 * Sortable columns, overridden by the subclass.
+		 *
+		 * @return array
+		 */
+		protected function get_sortable_columns() {
+			return array();
+		}
+
+		/**
+		 * Views, overridden by the subclass.
+		 *
+		 * @return array
+		 */
+		protected function get_views() {
+			return array();
+		}
+
+		/**
+		 * Records the pagination arguments.
+		 *
+		 * @param array $args Args.
+		 * @return void
+		 */
+		protected function set_pagination_args( $args ) {
+			$this->_pagination_args = $args;
+		}
+
+		/**
+		 * Whether the table has rows.
+		 *
+		 * @return bool
+		 */
+		public function has_items() {
+			return ! empty( $this->items );
+		}
+
+		/**
+		 * Renders row actions.
+		 *
+		 * @param array  $actions Actions.
+		 * @param object $row     Row.
+		 * @return string
+		 */
+		public function row_actions( $actions, $always_visible = false ) {
+			return implode( ' | ', $actions );
+		}
+
+		/**
+		 * Default row actions for the primary column.
+		 *
+		 * Core returns just the toggle-row button here; the override in the
+		 * plugin's table falls back to this when a row permits no action.
+		 *
+		 * @param object|array $item        Row.
+		 * @param string       $column_name Column.
+		 * @param string       $primary     Primary column.
+		 * @return string
+		 */
+		protected function handle_row_actions( $item, $column_name, $primary ) {
+			return '';
+		}
+
+		/**
+		 * The current bulk action in the request.
+		 *
+		 * Mirrors core: `action` wins, `-1` means nothing selected.
+		 *
+		 * @return string|false
+		 */
+		public function current_action() {
+			if ( isset( $_REQUEST['action'] ) && '-1' !== $_REQUEST['action'] && '' !== $_REQUEST['action'] ) {
+				return $_REQUEST['action'];
+			}
+
+			return false;
+		}
+	}
+}
+
 // Load plugin classes under test (API and Bootstrap do not require Gravity Forms for tested methods).
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-api.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-bootstrap.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-schedule.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-renewals.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php';
+require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-table.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update-flow.php';
 require_once GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-card-update-page.php';
