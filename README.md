@@ -71,6 +71,12 @@ composer install
 ./vendor/bin/phpunit
 ```
 
+## Customising emails
+
+See [docs/email-customization.md](docs/email-customization.md) for the merge tag,
+the available filters, and the Gravity Forms hooks for changing the design of
+subscription notifications.
+
 ## Documentation
 
 - [API Documentation](https://docs.chip-in.asia)
