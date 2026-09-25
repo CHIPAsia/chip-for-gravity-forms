@@ -387,7 +387,7 @@ class GF_Chip_Renewal_Notifications {
 
 		check_admin_referer( 'chip_send_card_update_' . $entry_id );
 
-		if ( ! current_user_can( GF_Chip_Subscriptions_Page::capability() ) ) {
+		if ( ! GF_Chip_Subscriptions_Page::current_user_can_manage() ) {
 			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
 		}
 
@@ -454,7 +454,7 @@ class GF_Chip_Renewal_Notifications {
 
 		check_admin_referer( 'chip_retry_renewal_' . $entry_id );
 
-		if ( ! current_user_can( GF_Chip_Subscriptions_Page::capability() ) ) {
+		if ( ! GF_Chip_Subscriptions_Page::current_user_can_manage() ) {
 			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
 		}
 
