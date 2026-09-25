@@ -633,6 +633,73 @@ class GF_Chip_SubscriptionsTableTest extends TestCase {
 	}
 
 	/**
+	 * The page and its handlers must decide access the SAME way.
+	 *
+	 * Gravity Forms grants access by a different capability than the one the
+	 * page registers: an administrator carries `gform_full_access` and does
+	 * NOT carry `gravityforms_edit_settings`. `GFCommon::current_user_can_any()`
+	 * ORs the two, but a bare `current_user_can()` does not.
+	 *
+	 * The page renderer used the OR and the admin-post handlers used the bare
+	 * check, so an administrator could see the screen and then be refused by
+	 * every button on it: "You are not allowed to do that."
+	 */
+	public function test_handlers_decide_access_the_same_way_as_the_page() {
+		$page     = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-subscriptions-page.php' );
+		$handlers = file_get_contents( GF_CHIP_PLUGIN_PATH . 'includes/class-gf-chip-renewal-notifications.php' );
+
+		// No bare capability check may survive in the handlers: it would refuse
+		// every user who reaches the screen through gform_full_access.
+		$this->assertStringNotContainsString(
+			'current_user_can( GF_Chip_Subscriptions_Page::capability() )',
+			$handlers,
+			'the handlers must not use a bare current_user_can()'
+		);
+
+		// The handlers must call the shared predicate.
+		$this->assertStringContainsString( 'public static function current_user_can_manage()', $page );
+
+		$this->assertStringContainsString(
+			'GF_Chip_Subscriptions_Page::current_user_can_manage()',
+			$handlers,
+			'the handlers must use the same predicate as the page'
+		);
+
+		// And the page's own guards must go through it too, rather than each
+		// spelling the capability decision out again.
+		$this->assertSame(
+			2,
+			substr_count( $page, 'if ( ! self::current_user_can_manage() ) {' ),
+			'both the page renderer and the bulk handler must use the predicate'
+		);
+	}
+
+	/**
+	 * The predicate must OR in gform_full_access, which is how Gravity Forms
+	 * actually grants access.
+	 */
+	public function test_the_access_predicate_honours_gform_full_access() {
+		WP_Mock::userFunction( 'current_user_can' )->andReturnUsing(
+			function ( $cap ) {
+				// Exactly the shape that broke the buttons: full access, and
+				// no edit-settings capability.
+				return 'gform_full_access' === $cap;
+			}
+		);
+
+		$this->assertTrue( GF_Chip_Subscriptions_Page::current_user_can_manage() );
+	}
+
+	/**
+	 * A user with neither capability is still refused.
+	 */
+	public function test_the_access_predicate_refuses_a_user_without_either_capability() {
+		WP_Mock::userFunction( 'current_user_can' )->andReturn( false );
+
+		$this->assertFalse( GF_Chip_Subscriptions_Page::current_user_can_manage() );
+	}
+
+	/**
 	 * The views answer "how many are on hold", so each state gets a view and
 	 * the current one is marked — the same `subsubsub` markup core uses.
 	 */

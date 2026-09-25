@@ -716,6 +716,33 @@ if ( ! class_exists( 'GFCommon' ) ) {
 		public static function to_money( $amount, $currency = '' ) {
 			return number_format( (float) $amount, 2 ) . ' ' . $currency;
 		}
+
+		/**
+		 * Whether the current user holds any of the given capabilities.
+		 *
+		 * Reproduces Gravity Forms' own semantics, including the part that
+		 * matters most here: the OR with `gform_full_access`. GF grants access
+		 * by that capability for administrators and GF-role users, who do NOT
+		 * carry the granular `gravityforms_*` capability the page registers.
+		 * A stub without the OR would make an access test pass while the real
+		 * plugin refused every user.
+		 *
+		 * @param string|array $caps Capability or capabilities.
+		 * @return bool
+		 */
+		public static function current_user_can_any( $caps ) {
+			if ( ! is_array( $caps ) ) {
+				return current_user_can( $caps ) || current_user_can( 'gform_full_access' );
+			}
+
+			foreach ( $caps as $cap ) {
+				if ( current_user_can( $cap ) ) {
+					return true;
+				}
+			}
+
+			return current_user_can( 'gform_full_access' );
+		}
 	}
 }
 

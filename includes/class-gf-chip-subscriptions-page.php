@@ -43,15 +43,37 @@ class GF_Chip_Subscriptions_Page {
 	}
 
 	/**
-	 * Capability required to view the page.
+	 * Capability required for the actions on this screen.
 	 *
-	 * Mirrors the capability the add-on already uses for its settings page, so
-	 * access is not silently widened.
+	 * Single source of truth for both the page and its handlers, so a button
+	 * can never be offered to a user the action would then refuse.
 	 *
 	 * @return string
 	 */
 	public static function capability() {
 		return 'gravityforms_edit_settings';
+	}
+
+	/**
+	 * Whether the current user may use this screen and its actions.
+	 *
+	 * Must go through GFCommon::current_user_can_any() rather than a bare
+	 * current_user_can(). Gravity Forms grants access by a DIFFERENT capability
+	 * than the one registered: an administrator or a GF-role user typically
+	 * carries `gform_full_access` and does NOT carry
+	 * `gravityforms_edit_settings`. GFCommon::current_user_can_any() ORs the
+	 * two, so it passes for exactly the users who can see the page.
+	 *
+	 * Every caller — the page renderer, the bulk handler and the two
+	 * admin-post handlers — must use this method. A handler that used a bare
+	 * current_user_can() refused every user who reaches the screen through
+	 * gform_full_access, so pressing the button answered
+	 * "You are not allowed to do that." while the page it was on rendered fine.
+	 *
+	 * @return bool
+	 */
+	public static function current_user_can_manage() {
+		return (bool) GFCommon::current_user_can_any( self::capability() );
 	}
 
 	/**
@@ -138,7 +160,7 @@ class GF_Chip_Subscriptions_Page {
 		// action derived from the table's plural name.
 		check_admin_referer( GF_Chip_Subscriptions_Table::bulk_nonce_action() );
 
-		if ( ! GFCommon::current_user_can_any( self::capability() ) ) {
+		if ( ! self::current_user_can_manage() ) {
 			wp_die( esc_html__( 'You are not allowed to do that.', 'chip-for-gravity-forms' ) );
 		}
 
@@ -851,7 +873,7 @@ class GF_Chip_Subscriptions_Page {
 	 * @return void
 	 */
 	public static function render() {
-		if ( ! GFCommon::current_user_can_any( self::capability() ) ) {
+		if ( ! self::current_user_can_manage() ) {
 			wp_die( esc_html__( 'Access denied.', 'chip-for-gravity-forms' ) );
 		}
 
