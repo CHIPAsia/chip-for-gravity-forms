@@ -86,6 +86,18 @@ class GF_Chip_Subscriptions_Table extends WP_List_Table {
 	}
 
 	/**
+	 * The active status filter.
+	 *
+	 * The page needs it to render the table it received, so it is exposed
+	 * rather than rebuilt from the request a second time.
+	 *
+	 * @return string
+	 */
+	public function status() {
+		return (string) $this->status;
+	}
+
+	/**
 	 * Constructor.
 	 *
 	 * @param int    $per_page Rows per page.
@@ -503,7 +515,16 @@ class GF_Chip_Subscriptions_Table extends WP_List_Table {
 
 		$total = GF_Chip_Subscriptions_Page::count_subscriptions( $this->status, $this->search );
 
-		$this->_column_headers = array( $this->get_columns(), array(), $this->get_sortable_columns(), 'entry' );
+		// Hidden columns come from the user's Screen Options, never from a
+		// literal. Hardcoding an empty array here silently discards the
+		// preference: the toggle writes it, this line erased it on the next
+		// render, and the column could never actually be hidden.
+		$this->_column_headers = array(
+			$this->get_columns(),
+			get_hidden_columns( $this->screen ),
+			$this->get_sortable_columns(),
+			$this->get_primary_column_name(),
+		);
 
 		$this->set_pagination_args(
 			array(
